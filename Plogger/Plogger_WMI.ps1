@@ -178,8 +178,7 @@ function Capture-ResourceUsage {
             }
 
             # Initialize variables for metrics
-            $cpuUsageVal = $null
-            $cpuUtilityVal = $null # ADDED: Variable for % Processor Utility
+            $cpuUtilityVal = $null # Using % Processor Utility
             $ramAvailableMBVal = $null
             $ramUsedMBVal = $null
             $diskIOVal = $null
@@ -188,13 +187,7 @@ function Capture-ResourceUsage {
             $brightnessVal = $null
             $cpuTempVal = $null
 
-            # --- MODIFIED: Get CPU Usage using Performance Counters ---
-            try {
-                $cpuUsageVal = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
-                Write-Verbose "CPU Usage (% Processor Time): $cpuUsageVal %"
-            } catch {
-                Write-Warning "Failed to get CPU Usage (% Processor Time): $($_.Exception.Message)"
-            }
+            # --- MODIFIED: Get CPU Usage using % Processor Utility ---
             try {
                 $cpuUtilityVal = (Get-Counter '\Processor Information(_Total)\% Processor Utility' -ErrorAction Stop).CounterSamples.CookedValue
                 Write-Verbose "CPU Usage (% Processor Utility): $cpuUtilityVal %"
@@ -439,8 +432,7 @@ function Capture-ResourceUsage {
             # Create the base data object with metrics
             $currentData = [PSCustomObject]@{
                 Timestamp              = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                CPUUsagePercentTime    = $cpuUsageVal # RENAMED
-                CPUUsagePercentUtility = $cpuUtilityVal # ADDED
+                CPUUsagePercent        = $cpuUtilityVal # RENAMED from CPUUsagePercentUtility
                 CPUMaxClockSpeedMHz    = $cpuMaxClockSpeedMHz
                 RAMUsedMB              = $ramUsedMBVal
                 RAMAvailableMB         = $ramAvailableMBVal
