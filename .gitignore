@@ -1,0 +1,7 @@
+# Ignore log files
+*.csv
+
+# Ignore report files
+*.html
+
+
