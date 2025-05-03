@@ -25,9 +25,8 @@
 # Display disclaimer
 Write-Host "DISCLAIMER
 
-This script collects system resource usage data (CPU, RAM, running processes, and resource consumption metrics) from your computer for diagnostic purposes only. It utilizes native Windows functionality to gather performance information.
-
-By running this script, you acknowledge and agree that:
+Using native Windows functionality, this script collects system resource usage data (CPU, RAM, running processes, and resource consumption metrics)
+from your computer for diagnostic purposes only. By running this script, you acknowledge and agree that:
 
 1. The data collected will be used solely to analyze performance issues on your system.
 2. The script generates a CSV file containing system resource usage information only.
