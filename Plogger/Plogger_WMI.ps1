@@ -162,7 +162,6 @@ function Capture-ResourceUsage {
     # --- END CHANGE ---
 
     try {
-
         # Loop until duration is met or stopped manually
         while ($true) {
             # Check if the logging duration has been reached
@@ -180,6 +179,7 @@ function Capture-ResourceUsage {
 
             # Initialize variables for metrics
             $cpuUsageVal = $null
+            $cpuUtilityVal = $null # ADDED: Variable for % Processor Utility
             $ramAvailableMBVal = $null
             $ramUsedMBVal = $null
             $diskIOVal = $null
@@ -188,20 +188,29 @@ function Capture-ResourceUsage {
             $brightnessVal = $null
             $cpuTempVal = $null
 
-            # --- MODIFIED: Get CPU Usage using Performance Counter only ---
+            # --- MODIFIED: Get CPU Usage using Performance Counters ---
             try {
                 $cpuUsageVal = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
-                Write-Verbose "CPU Usage from Performance Counter: $cpuUsageVal %"
+                Write-Verbose "CPU Usage (% Processor Time): $cpuUsageVal %"
             } catch {
-                Write-Warning "Failed to get CPU Usage: $($_.Exception.Message)"
+                Write-Warning "Failed to get CPU Usage (% Processor Time): $($_.Exception.Message)"
+            }
+            try {
+                $cpuUtilityVal = (Get-Counter '\Processor Information(_Total)\% Processor Utility' -ErrorAction Stop).CounterSamples.CookedValue
+                Write-Verbose "CPU Usage (% Processor Utility): $cpuUtilityVal %"
+            } catch {
+                Write-Warning "Failed to get CPU Usage (% Processor Utility): $($_.Exception.Message). This counter might not be available on older systems."
+                $cpuUtilityVal = $null # Ensure it's null if counter fails
             }
             # --- END MODIFIED ---
+
             try {
                 $ramAvailableMBVal = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
                 if ($null -ne $totalRamMB -and $null -ne $ramAvailableMBVal) {
                     $ramUsedMBVal = $totalRamMB - $ramAvailableMBVal
                 }
             } catch { Write-Warning "Failed to get Available RAM: $($_.Exception.Message). Check permissions or run 'lodctr /R' as Admin." } # Added hint
+            
             # --- CHANGE: Add single warning flag for Disk IO --- 
             try { 
                 $diskIOVal = (Get-Counter '\PhysicalDisk(_Total)\Disk Transfers/sec' -ErrorAction Stop).CounterSamples.CookedValue 
@@ -213,9 +222,10 @@ function Capture-ResourceUsage {
                 } 
             } 
             # --- END CHANGE ---
-            # --- COMPLETELY REVISED: Network IO monitoring using WMI/CIM instead of counters ---
+            
+            # --- Network IO monitoring using WMI/CIM ---
             try {
-                # Get network interface statistics using CIM instead of performance counters
+                # Get network interface statistics using CIM
                 $networkAdapters = Get-CimInstance -ClassName Win32_PerfFormattedData_Tcpip_NetworkInterface -ErrorAction Stop
                 
                 # Filter out virtual and inactive adapters, sum bytes in and out across all physical adapters
@@ -231,9 +241,6 @@ function Capture-ResourceUsage {
                     # If we have adapters but none are active, use 0
                     $networkIOVal = 0
                 }
-                
-                # Log the adapter names if needed for debugging
-                # Write-Host "Found adapters: $($physicalAdapters.Name -join ', ')"
             } catch {
                 # Handle the case where the WMI class isn't available or other errors
                 Write-Warning "Failed to get Network IO via Win32_PerfFormattedData_Tcpip_NetworkInterface: $($_.Exception.Message)"
@@ -251,8 +258,9 @@ function Capture-ResourceUsage {
                     Write-Warning "Fallback network detection also failed: $($_.Exception.Message)"
                 }
             }
-            # --- END COMPLETELY REVISED ---
-            # --- ENHANCED: Battery monitoring with multiple methods and WMI classes ---
+            # --- END Network IO ---
+            
+            # --- Battery monitoring with multiple methods and WMI classes ---
             try { 
                 # PRIMARY METHOD: Get battery data from ROOT\cimv2 namespace
                 $batteryVal = $null
@@ -331,20 +339,13 @@ function Capture-ResourceUsage {
                 }
                 $batteryVal = "Error"  # Indicate an error occurred
             }
-            # --- END IMPROVED ---
-            try { $brightnessVal = (Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness -ErrorAction Stop).CurrentBrightness } catch { Write-Warning "Failed to get Brightness: $($_.Exception.Message)" } # Use Get-CimInstance
-
-            # --- CHANGE: Disk IO retrieval with single warning scope fix ---
-            try {
-                $diskIOVal = (Get-Counter '\PhysicalDisk(_Total)\Disk Transfers/sec' -ErrorAction Stop).CounterSamples.CookedValue
-            } catch {
-                $diskIOVal = $null # Ensure value is null on failure
-                if (-not $script:diskIOWarningLogged) {
-                    Write-Warning "Failed to get Disk IO: $($_.Exception.Message). Check permissions or run 'lodctr /R' as Admin. Further Disk IO warnings will be suppressed."
-                    $script:diskIOWarningLogged = $true
-                }
+            # --- END Battery monitoring ---
+            
+            try { 
+                $brightnessVal = (Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness -ErrorAction Stop).CurrentBrightness 
+            } catch { 
+                Write-Warning "Failed to get Brightness: $($_.Exception.Message)" 
             }
-            # --- END CHANGE ---
 
             # --- NEW: Attempt to get CPU Temperature using WMI ---
             try {
@@ -397,25 +398,25 @@ function Capture-ResourceUsage {
                     $engineDataRaw = $engineCounters.CounterSamples | ForEach-Object {
                         # Extract Engine Name and LUID
                         $engineName = "Unknown"
-                        if ($_.InstanceName -match 'engtype_([a-zA-Z0-9]+)') {
-                            $engineName = $matches[1]
+                        if ($_.InstanceName -match 'engtype_([a-zA-Z0-9]+)') { 
+                            $engineName = $matches[1] 
                         }
-                        elseif ($_.InstanceName -match 'luid_\w+_phys_\d+_eng_\d+_type_([a-zA-Z0-9]+)') {
-                            $engineName = $matches[1]
+                        elseif ($_.InstanceName -match 'luid_\w+_phys_\d+_eng_\d+_type_([a-zA-Z0-9]+)') { 
+                            $engineName = $matches[1] 
                         }
-                        elseif ($_.InstanceName -match 'eng_(\d+)') {
-                            $engineName = "Engine_$($matches[1])"
+                        elseif ($_.InstanceName -match 'eng_(\d+)') { 
+                            $engineName = "Engine_$($matches[1])" 
                         }
 
                         $luid = "N/A"
-                        if ($_.InstanceName -match 'luid_([^_]+)') {
-                            $luid = $matches[1]
+                        if ($_.InstanceName -match 'luid_([^_]+)') { 
+                            $luid = $matches[1] 
                         }
 
-                        [PSCustomObject]@{
+                        [PSCustomObject]@{ 
                             GPU_LUID = $luid
                             Engine = $engineName
-                            UsagePercent = $_.CookedValue
+                            UsagePercent = $_.CookedValue 
                         }
                     }
                     
@@ -427,18 +428,19 @@ function Capture-ResourceUsage {
                     }
                     
                     Write-Verbose "GPU Engine Usage: $($gpuEngineUsage | Out-String)"
-                } else {
-                    Write-Verbose "No '\GPU Engine(*)\Utilization Percentage' counters found."
+                } else { 
+                    Write-Verbose "No '\GPU Engine(*)\Utilization Percentage' counters found." 
                 }
-            } catch {
-                Write-Warning "Failed to get GPU Engine Utilization: $($_.Exception.Message)"
+            } catch { 
+                Write-Warning "Failed to get GPU Engine Utilization: $($_.Exception.Message)" 
             }
             # --- END NEW GPU Engine Utilization ---
 
             # Create the base data object with metrics
             $currentData = [PSCustomObject]@{
                 Timestamp              = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                CPUUsage               = $cpuUsageVal
+                CPUUsagePercentTime    = $cpuUsageVal # RENAMED
+                CPUUsagePercentUtility = $cpuUtilityVal # ADDED
                 CPUMaxClockSpeedMHz    = $cpuMaxClockSpeedMHz
                 RAMUsedMB              = $ramUsedMBVal
                 RAMAvailableMB         = $ramAvailableMBVal
@@ -567,7 +569,6 @@ function Capture-ResourceUsage {
         } # End While loop
     } # End Try block
     finally {
-
         # --- MODIFIED: Save both hardware and process data when finishing ---
         # Save hardware data
         if ($data.Count -gt 0) {
