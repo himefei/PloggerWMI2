@@ -178,7 +178,7 @@ $reportContent = @"
     <div class="chart-row">
         <div class="chart-half">
             <div class="chart-container">
-                <div class="chart-title">CPU and GPU Temperature (°C)</div>
+                <div class="chart-title">CPU Temperature (C) (for reference only)</div>
                 <canvas id="tempChart"></canvas>
             </div>
         </div>
@@ -450,17 +450,6 @@ $reportContent = @"
                 data: cpuTemp,
                 borderColor: 'rgb(255, 99, 132)',
                 backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                borderWidth: 2,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10
-            },
-            {
-                label: "dGPU Temperature (" + dgpuNameForTemp + ")", // Use extracted name
-                data: dgpuTemperature,
-                borderColor: 'rgb(153, 102, 255)',
-                backgroundColor: 'rgba(153, 102, 255, 0.2)',
                 borderWidth: 2,
                 tension: 0.4,
                 pointRadius: 0,

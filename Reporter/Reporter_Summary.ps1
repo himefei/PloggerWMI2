@@ -214,7 +214,7 @@ $metrics += Get-MetricStatistics -Data $data -PropertyName "DiskIOTransferSec" -
 $metrics += Get-MetricStatistics -Data $data -PropertyName "NetworkIOBytesSec" -Label "Network I/O" -Unit "bytes/sec"
 
 # CPU Temperature
-$metrics += Get-MetricStatistics -Data $data -PropertyName "CPUTemperatureC" -Label "CPU Temperature" -Unit "°C"
+$metrics += Get-MetricStatistics -Data $data -PropertyName "CPUTemperatureC" -Label "CPU Temperature (for reference only)" -Unit "°C"
 
 # Screen Brightness
 $metrics += Get-MetricStatistics -Data $data -PropertyName "ScreenBrightness" -Label "Screen Brightness" -Unit "%"
@@ -228,7 +228,7 @@ if ($gpuInfo.iGPU.Columns.Count -gt 0) {
     $igpuName = $gpuInfo.iGPU.Name
     
     if ($gpuInfo.iGPU.Columns.temperature) {
-        $metrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfo.iGPU.Columns.temperature -Label "$igpuName Temperature" -Unit "°C"
+        $metrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfo.iGPU.Columns.temperature -Label "$igpuName Temperature (for reference only)" -Unit "°C"
     }
     
     if ($gpuInfo.iGPU.Columns.power) {
@@ -257,7 +257,7 @@ if ($gpuInfo.dGPU.Columns.Count -gt 0) {
     $dgpuName = $gpuInfo.dGPU.Name
     
     if ($gpuInfo.dGPU.Columns.temperature) {
-        $metrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfo.dGPU.Columns.temperature -Label "$dgpuName Temperature" -Unit "°C"
+        $metrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfo.dGPU.Columns.temperature -Label "$dgpuName Temperature (for reference only)" -Unit "°C"
     }
     
     if ($gpuInfo.dGPU.Columns.power) {
