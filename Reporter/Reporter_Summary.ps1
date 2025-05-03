@@ -55,7 +55,7 @@ if ($null -eq $data -or $data.Count -eq 0) {
 }
 
 # Check for essential columns
-$requiredColumns = @('Timestamp', 'CPUUsage')
+$requiredColumns = @('Timestamp', 'CPUUsagePercent')
 $missingColumns = $requiredColumns | Where-Object { -not $data[0].PSObject.Properties.Name -contains $_ }
 if ($missingColumns) {
     Write-Error "The CSV file '$csvFilePath' is missing required columns: $($missingColumns -join ', ')"
@@ -203,7 +203,7 @@ $gpuInfo = Get-GpuColumns -Data $data
 $metrics = @()
 
 # CPU Usage
-$metrics += Get-MetricStatistics -Data $data -PropertyName "CPUUsage" -Label "CPU Usage" -Unit "%"
+$metrics += Get-MetricStatistics -Data $data -PropertyName "CPUUsagePercent" -Label "CPU Usage" -Unit "%"
 
 # RAM
 $metrics += Get-MetricStatistics -Data $data -PropertyName "RAMUsedMB" -Label "RAM Used" -Unit "MB"
