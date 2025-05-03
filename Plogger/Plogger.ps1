@@ -194,10 +194,10 @@ function Capture-ResourceUsage {
 
             # --- MODIFIED: Get CPU Usage using % Processor Utility ---
             try {
-                $cpuUtilityVal = (Get-Counter '\Processor Information(_Total)\% Processor Utility' -ErrorAction Stop).CounterSamples.CookedValue
-                Write-Verbose "CPU Usage (% Processor Utility): $cpuUtilityVal %"
+                $cpuUtilityVal = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
+                Write-Verbose "CPU Usage (% Processor Time): $cpuUtilityVal %"
             } catch {
-                Write-Warning "Failed to get CPU Usage (% Processor Utility): $($_.Exception.Message). This counter might not be available on older systems."
+                Write-Warning "Failed to get CPU Usage (% Processor Time): $($_.Exception.Message). Check permissions or run 'lodctr /R' as Admin."
                 $cpuUtilityVal = $null # Ensure it's null if counter fails
             }
             # --- END MODIFIED ---
