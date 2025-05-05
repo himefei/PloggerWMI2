@@ -183,6 +183,7 @@ function Capture-ResourceUsage {
             }
 
             # Initialize variables for metrics
+            # $cpuTimeVal = $null # REMOVED: Using % Processor Time
             $cpuUtilityVal = $null # Using % Processor Utility
             $ramAvailableMBVal = $null
             $ramUsedMBVal = $null
@@ -192,15 +193,27 @@ function Capture-ResourceUsage {
             $brightnessVal = $null
             $cpuTempVal = $null
 
-            # --- MODIFIED: Get CPU Usage using % Processor Utility ---
+            # --- REMOVED: Get CPU Usage using % Processor Time ---
+            # try {
+            #     # Keep the original counter
+            #     $cpuTimeVal = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
+            #     Write-Verbose "CPU Usage (% Processor Time): $cpuTimeVal %"
+            # } catch {
+            #     Write-Warning "Failed to get CPU Usage (% Processor Time): $($_.Exception.Message). Check permissions or run 'lodctr /R' as Admin."
+            #     $cpuTimeVal = $null # Ensure it's null if counter fails
+            # }
+
+            # --- Get CPU Usage using % Processor Utility ---
             try {
-                $cpuUtilityVal = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
-                Write-Verbose "CPU Usage (% Processor Time): $cpuUtilityVal %"
+                # Add the new counter
+                $cpuUtilityVal = (Get-Counter '\Processor Information(_Total)\% Processor Utility' -ErrorAction Stop).CounterSamples.CookedValue
+                Write-Verbose "CPU Usage (% Processor Utility): $cpuUtilityVal %"
             } catch {
-                Write-Warning "Failed to get CPU Usage (% Processor Time): $($_.Exception.Message). Check permissions or run 'lodctr /R' as Admin."
+                # Add specific warning for this counter, maybe it doesn't exist on all systems
+                Write-Warning "Failed to get CPU Usage (% Processor Utility): $($_.Exception.Message). This counter might not be available on all systems. Check permissions or run 'lodctr /R' as Admin."
                 $cpuUtilityVal = $null # Ensure it's null if counter fails
             }
-            # --- END MODIFIED ---
+            # --- END NEW ---
 
             try {
                 $ramAvailableMBVal = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
@@ -437,6 +450,7 @@ function Capture-ResourceUsage {
             # Create the base data object with metrics
             $currentData = [PSCustomObject]@{
                 Timestamp              = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                # CPUUsagePercentTime    = $cpuTimeVal # REMOVED
                 CPUUsagePercent        = $cpuUtilityVal # RENAMED from CPUUsagePercentUtility
                 CPUMaxClockSpeedMHz    = $cpuMaxClockSpeedMHz
                 RAMUsedMB              = $ramUsedMBVal
