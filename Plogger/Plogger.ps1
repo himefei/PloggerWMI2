@@ -47,6 +47,94 @@ if ($confirmation -ne 'Y' -and $confirmation -ne 'y') {
     exit
 }
 
+# Function to get current power status and overlay metrics
+function Get-PowerStatusMetrics {
+   # Mapping of known Power Mode Overlay GUIDs to friendly names
+   $powerModeOverlayGuids = @{
+       "ded574b5-45a0-4f42-8737-46345c09c238" = "Best Performance"
+       "31fccf00-1979-49fb-97ca-292516017500" = "Better Performance" # Often an intermediate step
+       "961cc777-2547-4f9d-8174-7d86181b8a7a" = "Balanced (Recommended / Better Battery)" # Can vary based on slider position
+       "12957487-2663-4308-8a36-80225202370b" = "Battery Saver / Best Power Efficiency"
+       "00000000-0000-0000-0000-000000000000" = "System Default / Varies (Often aligns with base plan or 'Balanced' overlay)"
+       # Add other OEM-specific overlay GUIDs here if discovered
+   }
+
+   $basePlanName = "Error"
+   $basePlanGUID = "Error"
+   $powerStatusString = "Error"
+   $overlayFriendlyName = "Error"
+   $activeOverlayGuid = "Error"
+
+   # 1. Get the base Windows Power Plan
+   try {
+       $activeBasePlan = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan -Filter "IsActive = 'True'" -ErrorAction Stop
+       if ($activeBasePlan) {
+           $basePlanName = $activeBasePlan.ElementName
+           $basePlanGUID = $activeBasePlan.InstanceID -replace "Microsoft:PowerPlan\{(.+)\}", '$1'
+       } else {
+           Write-Warning "Could not determine the active base Windows Power Plan."
+       }
+   }
+   catch {
+       Write-Warning "Error getting base Windows Power Plan: $($_.Exception.Message)"
+   }
+
+   # 2. Determine AC/DC Power Status
+   $onACPower = $true # Assume AC if no battery or battery status indicates AC
+   try {
+       $powerSource = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue # SilentlyContinue as desktops won't have it
+       if ($powerSource) {
+           # BatteryStatus: 1 = Discharging (DC), 2 = On AC, other values exist
+           if ($powerSource.BatteryStatus -eq 1) {
+               $onACPower = $false
+           }
+       }
+       $powerStatusString = if ($onACPower) { "AC Power" } else { "DC (Battery) Power" }
+   } catch {
+       Write-Warning "Error determining AC/DC Power Status: $($_.Exception.Message). Assuming AC Power."
+       $powerStatusString = "AC Power (Assumed due to error)"
+   }
+
+
+   # 3. Read the Active Power Mode Overlay from Registry
+   $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes"
+   $overlayValueName = if ($onACPower) { "ActiveOverlayAcPowerScheme" } else { "ActiveOverlayDcPowerScheme" }
+
+   try {
+       $retrievedOverlayGuid = (Get-ItemProperty -Path $registryPath -Name $overlayValueName -ErrorAction Stop).$overlayValueName
+       if ($retrievedOverlayGuid) {
+           $activeOverlayGuid = $retrievedOverlayGuid # Store the raw GUID
+           $overlayFriendlyName = $powerModeOverlayGuids[$retrievedOverlayGuid.ToLower()]
+           if (!$overlayFriendlyName) {
+               if ($retrievedOverlayGuid -eq "00000000-0000-0000-0000-000000000000") {
+                   if ($basePlanName -eq "Balanced") {
+                        $overlayFriendlyName = "Balanced (Overlay matches base plan or system default)"
+                   } else {
+                        $overlayFriendlyName = "System Default / No Specific Overlay (using base plan settings)"
+                   }
+               }
+               else {
+                    $overlayFriendlyName = "Unknown Overlay GUID"
+               }
+           }
+       } else {
+           Write-Warning "Could not determine the active Power Mode Overlay (GUID not found or empty)."
+           # $activeOverlayGuid and $overlayFriendlyName remain "Error"
+       }
+   }
+   catch {
+       Write-Warning "Error reading Power Mode Overlay from registry: $($_.Exception.Message)"
+       # $activeOverlayGuid and $overlayFriendlyName remain "Error"
+   }
+
+   return [PSCustomObject]@{
+       ActivePowerPlanName = $basePlanName
+       ActivePowerPlanGUID = $basePlanGUID
+       SystemPowerStatus   = $powerStatusString
+       ActiveOverlayName   = $overlayFriendlyName
+       ActiveOverlayGUID   = $activeOverlayGuid
+   }
+}
 
 # Function to capture hardware resource usage
 function Capture-ResourceUsage {
@@ -190,10 +278,14 @@ function Capture-ResourceUsage {
             $diskIOVal = $null
             $networkIOVal = $null
             $batteryVal = $null
-            $brightnessVal = $null
-            $cpuTempVal = $null
+           $brightnessVal = $null
+           $cpuTempVal = $null
+           
+           # --- Get Power Status Metrics ---
+           $powerMetrics = Get-PowerStatusMetrics
+           # --- END Power Status Metrics ---
 
-            # --- REMOVED: Get CPU Usage using % Processor Time ---
+           # --- REMOVED: Get CPU Usage using % Processor Time ---
             # try {
             #     # Keep the original counter
             #     $cpuTimeVal = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
@@ -459,10 +551,15 @@ function Capture-ResourceUsage {
                 NetworkIOBytesSec      = $networkIOVal
                 BatteryPercentage      = $batteryVal
                 ScreenBrightness       = $brightnessVal
-                CPUTemperatureC        = if ($null -ne $cpuTempVal) { [math]::Round($cpuTempVal, 2) } else { $null }
-            }
-            
-            # Add GPU Engine metrics from the hashtable
+               CPUTemperatureC        = if ($null -ne $cpuTempVal) { [math]::Round($cpuTempVal, 2) } else { $null }
+               ActivePowerPlanName    = $powerMetrics.ActivePowerPlanName
+               ActivePowerPlanGUID    = $powerMetrics.ActivePowerPlanGUID
+               SystemPowerStatus      = $powerMetrics.SystemPowerStatus
+               ActiveOverlayName      = $powerMetrics.ActiveOverlayName
+               ActiveOverlayGUID      = $powerMetrics.ActiveOverlayGUID
+           }
+           
+           # Add GPU Engine metrics from the hashtable
             foreach ($key in $gpuEngineUsage.Keys) {
                 $currentData | Add-Member -MemberType NoteProperty -Name $key -Value $gpuEngineUsage[$key]
             }
