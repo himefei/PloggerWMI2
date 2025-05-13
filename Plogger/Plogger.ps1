@@ -28,6 +28,48 @@
 # IMPORTATNT: If you encountered issue with execution policy, please run the command: "set-executionpolicy unrestricted" in PowerShell with Administrator privileges.
 ###################################################################################
 
+# --- Robust script/exe directory resolution for both .ps1 and .exe ---
+$Global:ResolvedScriptRoot = $null
+Write-Verbose "Attempting to determine Plogger base directory..."
+
+if ($PSScriptRoot) {
+    $Global:ResolvedScriptRoot = $PSScriptRoot
+    Write-Verbose "Using PSScriptRoot: $Global:ResolvedScriptRoot"
+} elseif ($MyInvocation.MyCommand.Path -and ($MyInvocation.MyCommand.Path -like '*.exe')) {
+    $Global:ResolvedScriptRoot = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+    Write-Verbose "Using MyInvocation.MyCommand.Path (EXE): $Global:ResolvedScriptRoot"
+} else {
+    try {
+        $processPath = (Get-Process -Id $PID).Path
+        if ($processPath) {
+            $Global:ResolvedScriptRoot = Split-Path -Path $processPath -Parent
+            Write-Verbose "Using Get-Process Path: $Global:ResolvedScriptRoot"
+        } else {
+            Write-Warning "Get-Process -Id $PID did not return a path."
+        }
+    } catch {
+        Write-Warning "Failed to get path from Get-Process: $($_.Exception.Message)"
+    }
+
+    if (-not $Global:ResolvedScriptRoot) {
+        if ($MyInvocation.MyCommand.Path) {
+            $Global:ResolvedScriptRoot = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+            Write-Warning "Fallback to MyInvocation.MyCommand.Path (non-EXE or other context): $Global:ResolvedScriptRoot"
+        } else {
+            Write-Error "FATAL: Unable to determine Plogger base directory using PSScriptRoot, MyInvocation.MyCommand.Path, or Get-Process."
+            Write-Warning "As a final attempt, using current working directory: $(Get-Location). This may be unreliable for locating dependencies."
+            $Global:ResolvedScriptRoot = $PWD.Path # Current working directory
+        }
+    }
+}
+
+if (-not $Global:ResolvedScriptRoot -or -not (Test-Path $Global:ResolvedScriptRoot -PathType Container)) {
+    Write-Error "FATAL: Plogger base directory could not be reliably determined or is invalid: '$Global:ResolvedScriptRoot'."
+    exit 1
+}
+
+Write-Host "Plogger base directory determined as: $Global:ResolvedScriptRoot"
+
 # Display disclaimer
 Write-Host "DISCLAIMER
 
@@ -175,8 +217,8 @@ function Capture-ResourceUsage {
     # If Duration is 0, loop indefinitely, otherwise calculate endTime
     $endTime = if ($Duration -gt 0) { $startTime.AddMinutes($Duration) } else { $null }
     $data = @()
-    # --- CHANGE: Use $PSScriptRoot and new filename format ---
-    $scriptDirectory = $PSScriptRoot # More reliable way to get script's directory
+    # --- CHANGE: Use $Global:ResolvedScriptRoot and new filename format ---
+    $scriptDirectory = $Global:ResolvedScriptRoot # More reliable way to get script's directory
     $logFileName = "$($pcSerialNumber)_$(Get-Date -Format 'HHmmss_ddMMyyyy').csv"
     $logFilePath = Join-Path $scriptDirectory $logFileName
     # --- ADDED: Prepare per-process log file path ---
@@ -566,6 +608,9 @@ function Capture-ResourceUsage {
             $data += $currentData
 
             # --- MODIFIED: Log per-process metrics including GPU memory ---
+            # --- Get Logical Core Count for per-process CPU usage ---
+            $logicalCoreCount = [Environment]::ProcessorCount
+
             try {
                 # Get standard process metrics
                 $procPerf = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfProc_Process -ErrorAction Stop |
@@ -573,7 +618,7 @@ function Capture-ResourceUsage {
                     Select-Object @{Name='Timestamp';Expression={Get-Date -Format 'yyyy-MM-dd HH:mm:ss'}},
                                   @{Name='ProcessName';Expression={$_.Name}},
                                   @{Name='ProcessId';Expression={$_.IDProcess}},
-                                  @{Name='CPUPercent';Expression={[math]::Round($_.PercentProcessorTime,2)}},
+                                  @{Name='CPUPercent';Expression={ if ($logicalCoreCount -gt 0) { [math]::Round($_.PercentProcessorTime / $logicalCoreCount, 2) } else { [math]::Round($_.PercentProcessorTime, 2) } }},
                                   @{Name='RAM_MB';Expression={[math]::Round($_.WorkingSet/1MB,2)}},
                                   @{Name='IOReadBytesPerSec';Expression={$_.IOReadBytesPersec}},
                                   @{Name='IOWriteBytesPerSec';Expression={$_.IOWriteBytesPersec}}

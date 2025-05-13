@@ -19,7 +19,7 @@ function Select-CsvFile {
     }
 }
 
-# Function to calculate statistics for a given metric (from Reporter_Summary.ps1)
+# Function to calculate statistics for a given metric
 function Get-MetricStatistics {
     param (
         [Parameter(Mandatory=$true)]
@@ -42,12 +42,12 @@ function Get-MetricStatistics {
             try {
                 [double]$value
             } catch {
-                $null
+                $null # Ignore conversion errors for individual values
             }
         }
     } | Where-Object { $null -ne $_ }
     
-    # If no valid numeric values, return null
+    # If no valid numeric values, return N/A
     if ($null -eq $numericValues -or $numericValues.Count -eq 0) {
         return @{
             Label = $Label
@@ -72,7 +72,31 @@ function Get-MetricStatistics {
     }
 }
 
-# Function to identify GPU columns and extract GPU names (from Reporter_Summary.ps1)
+# Function to find a column name based on keywords
+function Get-DynamicColumnName {
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$ColumnHeaders,
+        [Parameter(Mandatory=$true)]
+        [string]$PrimaryKeyword,
+        [string]$SecondaryKeyword = $null
+    )
+
+    foreach ($header in $ColumnHeaders) {
+        if ($header -ilike "*$PrimaryKeyword*") {
+            if ($null -ne $SecondaryKeyword) {
+                if ($header -ilike "*$SecondaryKeyword*") {
+                    return $header
+                }
+            } else {
+                return $header
+            }
+        }
+    }
+    return $null
+}
+
+# Function to identify GPU columns and extract GPU names
 function Get-GpuColumns {
     param (
         [Parameter(Mandatory=$true)]
@@ -81,8 +105,8 @@ function Get-GpuColumns {
     
     $igpuColumns = @{}
     $dgpuColumns = @{}
-    $igpuName = "Intel GPU"
-    $dgpuName = "NVIDIA GPU"
+    $igpuName = "Intel GPU" # Default name
+    $dgpuName = "NVIDIA GPU" # Default name
     
     if ($Data.Count -gt 0) {
         $firstRow = $Data[0]
@@ -92,12 +116,12 @@ function Get-GpuColumns {
         foreach ($colName in $columnNames) {
             # Match Intel GPU columns (iGPU)
             if ($colName -match 'GPU_Intel' -or ($colName -match '^GPU_' -and $colName -notmatch 'Nvidia')) {
-                # Extract GPU name from column name
                 if ($colName -match '^GPU_(.+?)_(.+?)$') {
-                    $fullName = $matches[1]
-                    $igpuName = $fullName -replace '_', ' '
+                    $extractedName = $matches[1] -replace '_', ' '
+                    if ($extractedName -ne "Intel") { # Avoid just "Intel" if more specific name found
+                        $igpuName = $extractedName
+                    }
                     
-                    # Identify metric type
                     if ($colName -match '3DLoadPercent$') {
                         $igpuColumns.load3d = $colName
                     } elseif ($colName -match 'VideoDecodePercent$') {
@@ -116,12 +140,12 @@ function Get-GpuColumns {
             
             # Match NVIDIA GPU columns (dGPU)
             if ($colName -match 'GPU_Nvidia') {
-                # Extract GPU name from column name
                 if ($colName -match '^GPU_(.+?)_(.+?)$') {
-                    $fullName = $matches[1]
-                    $dgpuName = $fullName -replace '_', ' '
-                    
-                    # Identify metric type
+                    $extractedName = $matches[1] -replace '_', ' '
+                     if ($extractedName -ne "Nvidia") { # Avoid just "Nvidia" if more specific name found
+                        $dgpuName = $extractedName
+                    }
+
                     if ($colName -match 'CoreLoadPercent$') {
                         $dgpuColumns.coreLoad = $colName
                     } elseif ($colName -match '3DLoadPercent$') {
@@ -151,6 +175,71 @@ function Get-GpuColumns {
         }
     }
 }
+
+# Function to calculate statistics for all CPU core clocks
+function Get-AllCoreClockStatistics {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data,
+
+        [string]$ClockColumnName = "CPUCoreClocks", # Default column name
+
+        [string]$Label = "CPU Clock Speed (All Cores)",
+        [string]$Unit = "MHz"
+    )
+
+    $allCoreClockValues = [System.Collections.Generic.List[double]]::new()
+
+    # Check if the column exists in the first data row (assuming consistent CSV structure)
+    if (-not ($Data.Count -gt 0 -and $Data[0].PSObject.Properties.Name -contains $ClockColumnName)) {
+        return @{
+            Label = $Label
+            Unit = $Unit
+            Average = "N/A"
+            Minimum = "N/A"
+            Maximum = "N/A"
+            Available = $false
+        }
+    }
+
+    foreach ($row in $Data) {
+        $clockDataString = $row.$ClockColumnName
+        if (-not [string]::IsNullOrWhiteSpace($clockDataString)) {
+            $coreEntries = $clockDataString -split ';'
+            foreach ($entry in $coreEntries) {
+                if ($entry -match '.+=(\d+(\.\d+)?)$') {
+                    try {
+                        $clockValue = [double]$matches[1]
+                        $allCoreClockValues.Add($clockValue)
+                    } catch {}
+                }
+            }
+        }
+    }
+
+    if ($allCoreClockValues.Count -eq 0) {
+        return @{
+            Label = $Label
+            Unit = $Unit
+            Average = "N/A"
+            Minimum = "N/A"
+            Maximum = "N/A"
+            Available = $false
+        }
+    }
+
+    $stats = $allCoreClockValues | Measure-Object -Average -Minimum -Maximum
+
+    return @{
+        Label = $Label
+        Unit = $Unit
+        Average = [math]::Round($stats.Average, 0)
+        Minimum = [math]::Round($stats.Minimum, 0)
+        Maximum = [math]::Round($stats.Maximum, 0)
+        Available = $true
+    }
+}
+
 # --- Main Script ---
 
 # Prompt user to select the CSV file
@@ -184,228 +273,18 @@ if ($null -eq $data -or $data.Count -eq 0) {
     exit
 }
 
-# Check for essential columns
-$requiredColumns = @('Timestamp', 'CPUUsagePercent', 'RAMUsedMB') # Updated CPUUsage to CPUUsagePercent
+# Check for essential columns (use CPUUsagePercent, not CPUUsage)
+$requiredColumns = @('Timestamp', 'CPUUsagePercent', 'RAMUsedMB')
 $missingColumns = $requiredColumns | Where-Object { -not $data[0].PSObject.Properties.Name -contains $_ }
 if ($missingColumns) {
     Write-Error "The CSV file '$csvFilePath' is missing required columns: $($missingColumns -join ', ')"
     exit
 }
 
-# Function to check if Chart.js is available locally
+# Get Chart.js reference
 function Get-ChartJsReference {
     $scriptDir = $PSScriptRoot
     $localChartJsPath = Join-Path $scriptDir "chart.js"
-# --- Summary Report Generation (Merged from Reporter_Summary.ps1) ---
-
-# Define the output HTML file path for the summary report
-$fileNameWithoutExt = [System.IO.Path]::GetFileNameWithoutExtension($csvFilePath)
-$directory = [System.IO.Path]::GetDirectoryName($csvFilePath)
-$summaryHtmlOutputPath = [System.IO.Path]::Combine($directory, "$fileNameWithoutExt" + "_summary.html")
-
-# Identify GPU columns for summary
-$gpuInfoSummary = Get-GpuColumns -Data $data
-
-# Calculate statistics for each metric for summary
-$summaryMetrics = @()
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "CPUUsagePercent" -Label "CPU Usage" -Unit "%"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "RAMUsedMB" -Label "RAM Used" -Unit "MB"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "RAMAvailableMB" -Label "RAM Available" -Unit "MB"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "DiskIOTransferSec" -Label "Disk I/O" -Unit "transfers/sec"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "NetworkIOBytesSec" -Label "Network I/O" -Unit "bytes/sec"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "CPUTemperatureC" -Label "CPU Temperature (for reference only)" -Unit "°C"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "ScreenBrightness" -Label "Screen Brightness" -Unit "%"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "CPUPowerW" -Label "CPU Power" -Unit "W"
-$summaryMetrics += Get-MetricStatistics -Data $data -PropertyName "CPUPlatformPowerW" -Label "Platform Power" -Unit "W"
-
-# iGPU Metrics for summary (if available)
-if ($gpuInfoSummary.iGPU.Columns.Count -gt 0) {
-    $igpuNameSummary = $gpuInfoSummary.iGPU.Name
-    if ($gpuInfoSummary.iGPU.Columns.temperature) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.iGPU.Columns.temperature -Label "$igpuNameSummary Temperature (for reference only)" -Unit "°C"
-    }
-    if ($gpuInfoSummary.iGPU.Columns.power) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.iGPU.Columns.power -Label "$igpuNameSummary Power" -Unit "W"
-    }
-    if ($gpuInfoSummary.iGPU.Columns.coreLoad) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.iGPU.Columns.coreLoad -Label "$igpuNameSummary Core Load" -Unit "%"
-    }
-    if ($gpuInfoSummary.iGPU.Columns.load3d) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.iGPU.Columns.load3d -Label "$igpuNameSummary 3D Load" -Unit "%"
-    }
-    if ($gpuInfoSummary.iGPU.Columns.videoDecode) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.iGPU.Columns.videoDecode -Label "$igpuNameSummary Video Decode" -Unit "%"
-    }
-    if ($gpuInfoSummary.iGPU.Columns.videoProcessing) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.iGPU.Columns.videoProcessing -Label "$igpuNameSummary Video Processing" -Unit "%"
-    }
-}
-
-# dGPU Metrics for summary (if available)
-if ($gpuInfoSummary.dGPU.Columns.Count -gt 0) {
-    $dgpuNameSummary = $gpuInfoSummary.dGPU.Name
-    if ($gpuInfoSummary.dGPU.Columns.temperature) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.dGPU.Columns.temperature -Label "$dgpuNameSummary Temperature (for reference only)" -Unit "°C"
-    }
-    if ($gpuInfoSummary.dGPU.Columns.power) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.dGPU.Columns.power -Label "$dgpuNameSummary Power" -Unit "W"
-    }
-    if ($gpuInfoSummary.dGPU.Columns.coreLoad) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.dGPU.Columns.coreLoad -Label "$dgpuNameSummary Core Load" -Unit "%"
-    }
-    if ($gpuInfoSummary.dGPU.Columns.load3d) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.dGPU.Columns.load3d -Label "$dgpuNameSummary 3D Load" -Unit "%"
-    }
-    if ($gpuInfoSummary.dGPU.Columns.videoDecode) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.dGPU.Columns.videoDecode -Label "$dgpuNameSummary Video Decode" -Unit "%"
-    }
-    if ($gpuInfoSummary.dGPU.Columns.videoProcessing) {
-        $summaryMetrics += Get-MetricStatistics -Data $data -PropertyName $gpuInfoSummary.dGPU.Columns.videoProcessing -Label "$dgpuNameSummary Video Processing" -Unit "%"
-    }
-}
-
-# Calculate log duration information for summary
-$summaryTimestamps = $data | ForEach-Object {
-    try {
-        [datetime]::ParseExact($_.Timestamp, "yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
-    } catch {
-        $null
-    }
-} | Where-Object { $_ -ne $null }
-
-$summaryStartTime = $summaryTimestamps | Sort-Object | Select-Object -First 1
-$summaryEndTime = $summaryTimestamps | Sort-Object | Select-Object -Last 1
-$summaryDuration = $summaryEndTime - $summaryStartTime
-$summaryDurationHours = [math]::Round($summaryDuration.TotalHours, 2)
-
-# Generate HTML table rows for summary metrics
-$summaryTableRows = $summaryMetrics | ForEach-Object {
-    if ($_.Available) {
-        "<tr>
-            <td>$($_.Label)</td>
-            <td>$($_.Average) $($_.Unit)</td>
-            <td>$($_.Minimum) $($_.Unit)</td>
-            <td>$($_.Maximum) $($_.Unit)</td>
-        </tr>"
-    } else {
-        "<tr>
-            <td>$($_.Label)</td>
-            <td colspan='3'>Data Not Available</td>
-        </tr>"
-    }
-}
-
-# Generate the summary HTML report content
-$summaryReportContent = @"
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hardware Resource Usage Summary - $(Split-Path $csvFilePath -Leaf)</title>
-    <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-            color: #333;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #2c3e50;
-        }
-        .duration-info {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px auto;
-            max-width: 80%;
-            border: 1px solid #e0e0e0;
-        }
-        .summary-container {
-            width: 90%;
-            margin: 30px auto;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-        }
-        .summary-title {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #2c3e50;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        tr:hover {
-            background-color: #f8f9fa;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 14px;
-            color: #7f8c8d;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Hardware Resource Usage Summary</h1>
-        <h2>Source File: $(Split-Path $csvFilePath -Leaf)</h2>
-        <div class="duration-info">
-            <p>Log Duration: $summaryDurationHours hours (From $($summaryStartTime.ToString("yyyy-MM-dd HH:mm:ss")) to $($summaryEndTime.ToString("yyyy-MM-dd HH:mm:ss")))</p>
-        </div>
-    </div>
-
-    <div class="summary-container">
-        <div class="summary-title">Resource Usage Statistics</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Metric</th>
-                    <th>Average</th>
-                    <th>Minimum</th>
-                    <th>Maximum</th>
-                </tr>
-            </thead>
-            <tbody>
-                $summaryTableRows
-            </tbody>
-        </table>
-    </div>
-
-    <div class="footer">
-        <p>Report generated on $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
-    </div>
-
-</body>
-</html>
-"@
-
-# Save the summary report to its HTML file
-Write-Host "Saving summary report to $summaryHtmlOutputPath..."
-$summaryReportContent | Out-File -FilePath $summaryHtmlOutputPath -Encoding UTF8 -Force
-
-# --- End of Summary Report Generation ---
-    
-    # Check if local Chart.js file exists and embed it directly
     if (Test-Path $localChartJsPath) {
         Write-Host "Embedding Chart.js directly in the HTML report"
         $chartJsContent = Get-Content -Path $localChartJsPath -Raw
@@ -415,16 +294,134 @@ $summaryReportContent | Out-File -FilePath $summaryHtmlOutputPath -Encoding UTF8
         exit 1
     }
 }
-
-# Get Chart.js reference
 $chartJsRef = Get-ChartJsReference
+
+# --- BEGIN Overall Statistics Summary Calculation ---
+Write-Host "Calculating Overall Statistics Summary..."
+$overallStatsSummaryHtml = ""
+$statsTableRows = [System.Collections.Generic.List[string]]::new()
+
+# Define metrics to summarize (use CPUUsagePercent)
+$metricsToSummarize = @(
+    @{ Name = 'CPUUsagePercent'; Label = 'CPU Usage'; Unit = '%' }
+    @{ Name = 'RAMUsedMB'; Label = 'RAM Used'; Unit = 'MB' }
+    @{ Name = 'DiskIOTransferSec'; Label = 'Disk I/O'; Unit = 'Transfers/sec' }
+    @{ Name = 'NetworkIOBytesSec'; Label = 'Network I/O'; Unit = 'Bytes/sec' }
+    @{ Name = 'CPUTemperatureC'; Label = 'CPU Temperature'; Unit = '°C' }
+    @{ Name = 'CPUPowerW'; Label = 'CPU Power'; Unit = 'W' }
+    @{ Name = 'CPUPlatformPowerW'; Label = 'CPU Platform Power'; Unit = 'W' }
+)
+
+foreach ($metricInfo in $metricsToSummarize) {
+    if ($data[0].PSObject.Properties.Name -contains $metricInfo.Name) {
+        $stats = Get-MetricStatistics -Data $data -PropertyName $metricInfo.Name -Label $metricInfo.Label -Unit $metricInfo.Unit
+        if ($stats.Available) {
+            $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
+        } else {
+            $statsTableRows.Add("<tr><td>$($metricInfo.Label)</td><td colspan='3'>N/A (column present but no valid data)</td></tr>")
+        }
+    }
+}
+
+# Add CPU Core Clock Statistics
+if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains "CPUCoreClocks") {
+    $cpuClockStats = Get-AllCoreClockStatistics -Data $data
+    if ($cpuClockStats.Available) {
+        $statsTableRows.Add("<tr><td>$($cpuClockStats.Label)</td><td>$($cpuClockStats.Average) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Minimum) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Maximum) $($cpuClockStats.Unit)</td></tr>")
+    } else {
+        $statsTableRows.Add("<tr><td>$($cpuClockStats.Label)</td><td colspan='3'>N/A (column present but no valid data or parsing issues)</td></tr>")
+    }
+}
+
+# Dynamically add GPU statistics
+$gpuInfo = Get-GpuColumns -Data $data
+foreach ($gpuType in @('iGPU', 'dGPU')) {
+    $currentGpu = $gpuInfo[$gpuType]
+    if ($currentGpu -and $currentGpu.Columns.Count -gt 0) {
+        foreach ($metricKey in $currentGpu.Columns.Keys) {
+            $columnName = $currentGpu.Columns[$metricKey]
+            if ($columnName -and $data[0].PSObject.Properties.Name -contains $columnName) {
+                $label = "$($currentGpu.Name) $($metricKey -replace '([A-Z])', ' $1' | ForEach-Object {$_.TrimStart()})"
+                $unit = ""
+                if ($metricKey -like '*Power*') { $unit = 'W' }
+                elseif ($metricKey -like '*Temperature*') { $unit = '°C' }
+                elseif ($metricKey -like '*Load*' -or $metricKey -like '*Decode*' -or $metricKey -like '*Processing*') { $unit = '%' }
+                
+                $stats = Get-MetricStatistics -Data $data -PropertyName $columnName -Label $label -Unit $unit
+                 if ($stats.Available) {
+                    $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
+                } else {
+                    $statsTableRows.Add("<tr><td>$label</td><td colspan='3'>N/A (column present but no valid data)</td></tr>")
+                }
+            }
+        }
+    }
+}
+
+if ($statsTableRows.Count -gt 0) {
+    $overallStatsSummaryHtml = @"
+<div class="stats-section summary-stats">
+    <h2>Overall Statistics Summary</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Metric</th>
+                <th>Average</th>
+                <th>Minimum</th>
+                <th>Maximum</th>
+            </tr>
+        </thead>
+        <tbody>
+            $($statsTableRows -join "`n            ")
+        </tbody>
+    </table>
+</div>
+"@
+} else {
+    $overallStatsSummaryHtml = @"
+<div class="stats-section summary-stats">
+    <h2>Overall Statistics Summary</h2>
+    <p>No summary statistics could be calculated.</p>
+</div>
+"@
+}
+Write-Host "Overall Statistics Summary Calculation Complete."
+
+# --- Power Statistics Section (simplified for WMI-only logger) ---
+$powerStatisticsSectionHtml = ""
+if ($data.Count -gt 0) {
+    $lastRow = $data[-1]
+    $powerStatus = $lastRow.SystemPowerStatus
+    $activePlan = $lastRow.ActivePowerPlanName
+    $activeOverlay = $lastRow.ActiveOverlayName
+    $batteryPercentage = $lastRow.BatteryPercentage
+    $batteryDesignCapacity = $lastRow.BatteryDesignCapacitymWh
+    $batteryFullChargedCapacity = $lastRow.BatteryFullChargedCapacitymWh
+    $batteryRemainingCapacity = $lastRow.BatteryRemainingCapacitymWh
+    $batteryDischargeRate = $lastRow.BatteryDischargeRateW
+
+    $powerStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Power Statistics</h2>
+        <ul>
+            <li><strong>Current Power Status:</strong> $powerStatus</li>
+            <li><strong>Active Power Plan:</strong> $activePlan</li>
+            <li><strong>Active Overlay:</strong> $activeOverlay</li>
+            <li><strong>Battery Percentage:</strong> $batteryPercentage</li>
+            <li><strong>Battery Design Capacity (mWh):</strong> $batteryDesignCapacity</li>
+            <li><strong>Battery Full Charged Capacity (mWh):</strong> $batteryFullChargedCapacity</li>
+            <li><strong>Battery Remaining Capacity (mWh):</strong> $batteryRemainingCapacity</li>
+            <li><strong>Battery Discharge Rate (W):</strong> $batteryDischargeRate</li>
+        </ul>
+    </div>
+"@
+}
 
 # Pre-process the CSV data to JSON for JavaScript
 $jsonData = $data | ConvertTo-Json -Depth 10 -Compress
-# Escape double quotes and backslashes for JavaScript string literal
 $jsonDataForJs = $jsonData.Replace('\', '\\').Replace('"', '\"')
 
-# Generate the HTML report
+# Generate the HTML report (charts: CPU, RAM, Disk, Network, Temp, Brightness/Battery, GPU Engine)
 $reportContent = @"
 <!DOCTYPE html>
 <html lang="en">
@@ -434,49 +431,20 @@ $reportContent = @"
     <title>Hardware Resource Usage Report - $(Split-Path $csvFilePath -Leaf)</title>
     $chartJsRef
     <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-            color: #333;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #2c3e50;
-        }
-        .chart-container {
-            position: relative;
-            height: 400px;
-            width: 90%;
-            margin: 30px auto;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-        }
-        .chart-title {
-            text-align: center;
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: #2c3e50;
-        }
-        .chart-row {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-        }
-        .chart-half {
-            width: 48%;
-            margin-bottom: 20px;
-        }
-        @media (max-width: 1200px) {
-            .chart-half {
-                width: 100%;
-            }
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; color: #333; }
+        .header { text-align: center; margin-bottom: 30px; color: #2c3e50; }
+        .chart-container { position: relative; height: 400px; width: 90%; margin: 30px auto; background-color: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); padding: 20px; }
+        .chart-title { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 15px; color: #2c3e50; }
+        .chart-row { display: flex; flex-wrap: wrap; justify-content: space-between; }
+        .chart-half { width: 48%; margin-bottom: 20px; }
+        @media (max-width: 1200px) { .chart-half { width: 100%; } }
+        .stats-section { background-color: #fff; padding: 20px; margin: 30px auto; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 90%; }
+        .summary-stats table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .summary-stats th, .summary-stats td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .summary-stats th { background-color: #e9ecef; color: #495057; font-weight: 600; }
+        .summary-stats tr:nth-child(even) { background-color: #f8f9fa; }
+        .summary-stats td:nth-child(n+2) { text-align: right; }
+        .stats-section h2 { text-align: center; color: #2c3e50; margin-top: 0; margin-bottom: 25px; }
     </style>
 </head>
 <body>
@@ -484,6 +452,9 @@ $reportContent = @"
         <h1>Hardware Resource Usage Report</h1>
         <h2>Source File: $(Split-Path $csvFilePath -Leaf)</h2>
     </div>
+
+    $overallStatsSummaryHtml
+    $powerStatisticsSectionHtml
 
     <div class="chart-row">
         <div class="chart-half">
@@ -518,7 +489,7 @@ $reportContent = @"
     <div class="chart-row">
         <div class="chart-half">
             <div class="chart-container">
-                <div class="chart-title">CPU Temperature (C) (for reference only)</div>
+                <div class="chart-title">CPU Temperature (C)</div>
                 <canvas id="tempChart"></canvas>
             </div>
         </div>
@@ -530,10 +501,6 @@ $reportContent = @"
         </div>
     </div>
 
-    <!-- Old iGPU/dGPU charts removed -->
-    <!-- Combined Power chart removed -->
-    <!-- CPU Core Clock chart removed -->
-
     <div class="chart-row">
         <div class="chart-container" style="width: 90%; height: 500px;">
             <div class="chart-title">GPU Engine Utilization (%)</div>
@@ -544,8 +511,6 @@ $reportContent = @"
     <script>
         // Parse the CSV data
         const csvData = [];
-        
-        // Extract data from the CSV
         const timestamps = [];
         const cpuUsage = [];
         const ramUsed = [];
@@ -555,63 +520,34 @@ $reportContent = @"
         const cpuTemp = [];
         const screenBrightness = [];
         const batteryPercentage = [];
-        const dgpuTemperature = []; // Keep dGPU temp if available
-        
-        // GPU Engine data
         const gpuEngines = {};
         const gpuEngineNames = [];
-        
-        // Function to safely parse numeric values
+
         function parseNumeric(value) {
-            if (value === undefined || value === null || value === "") {
-                return null;
-            }
+            if (value === undefined || value === null || value === "") return null;
             const parsed = parseFloat(value);
             return isNaN(parsed) ? null : parsed;
         }
-        
-        // Process the CSV data
+
         const rawDataJson = "$jsonDataForJs";
         const rawData = JSON.parse(rawDataJson);
-        
-        // Identify column names from the first row if available
-        let dgpuNameForTemp = "dGPU"; // Default name for temp chart label - MOVED DECLARATION OUTSIDE IF
+
         if (rawData.length > 0) {
             const firstRow = rawData[0];
             const columnNames = Object.keys(firstRow);
-            
-            // Find GPU column names and extract GPU names
-            // let dgpuNameForTemp = "dGPU"; // Default name for temp chart label - REMOVED FROM HERE
             columnNames.forEach(colName => {
-                // Extract dGPU name if temperature column exists
-                 if (colName.includes('GPU_Nvidia') && colName.endsWith('TemperatureC')) {
-                     const nameParts = colName.split('_');
-                     if (nameParts.length >= 3) {
-                         const nameEndIndex = colName.lastIndexOf('_');
-                         const nameStartIndex = colName.indexOf('_') + 1;
-                         const fullName = colName.substring(nameStartIndex, nameEndIndex);
-                         dgpuNameForTemp = fullName.replace(/_/g, ' ');
-                     }
-                 }
-                
-                // Match GPU Engine columns
                 if (colName.startsWith('GPUEngine_') && colName.endsWith('_Percent')) {
                     const engineName = colName.replace('GPUEngine_', '').replace('_Percent', '');
-                    // Ensure engineName is not empty before adding
                     if (engineName && !gpuEngineNames.includes(engineName)) {
                         gpuEngineNames.push(engineName);
                     }
                 }
             });
-            
-            // REMOVED old chart title updates
-            // REMOVED old console logs for igpu/dgpu columns
         }
-        
-        // Process each row of data
+
         rawData.forEach((row, index) => {
             timestamps.push(row.Timestamp);
-            cpuUsage.push(parseNumeric(row.CPUUsagePercent)); // Updated CPUUsage to CPUUsagePercent
+            cpuUsage.push(parseNumeric(row.CPUUsagePercent));
             ramUsed.push(parseNumeric(row.RAMUsedMB));
             ramAvailable.push(parseNumeric(row.RAMAvailableMB));
             diskIO.push(parseNumeric(row.DiskIOTransferSec));
@@ -619,88 +555,50 @@ $reportContent = @"
             cpuTemp.push(parseNumeric(row.CPUTemperatureC));
             screenBrightness.push(parseNumeric(row.ScreenBrightness));
             batteryPercentage.push(parseNumeric(row.BatteryPercentage));
-            
-            // Process dGPU Temperature data
-            let dgpuTempColName = Object.keys(row).find(k => k.includes('GPU_Nvidia') && k.endsWith('TemperatureC'));
-            dgpuTemperature.push(dgpuTempColName ? parseNumeric(row[dgpuTempColName]) : null);
-            
-            // Process GPU Engine data
             gpuEngineNames.forEach(engineName => {
-                // Only process if engineName is valid
-                if (engineName) {
-                    const colName = 'GPUEngine_' + engineName + '_Percent'; // Use concatenation
-                    if (!gpuEngines[engineName]) {
-                        gpuEngines[engineName] = Array(index).fill(null); // Initialize with nulls for previous rows
-                    }
-                     // Make sure all engine arrays have the same length up to the current index
-                    while (gpuEngines[engineName].length < index) {
-                        gpuEngines[engineName].push(null);
-                    }
-                    // Check if the column actually exists in the row before accessing
-                    if (row.hasOwnProperty(colName)) {
-                         gpuEngines[engineName].push(parseNumeric(row[colName]));
-                    } else {
-                         gpuEngines[engineName].push(null); // Push null if column doesn't exist for this row
-                    }
+                const colName = 'GPUEngine_' + engineName + '_Percent';
+                if (!gpuEngines[engineName]) {
+                    gpuEngines[engineName] = Array(index).fill(null);
+                }
+                while (gpuEngines[engineName].length < index) {
+                    gpuEngines[engineName].push(null);
+                }
+                if (row.hasOwnProperty(colName)) {
+                    gpuEngines[engineName].push(parseNumeric(row[colName]));
+                } else {
+                    gpuEngines[engineName].push(null);
                 }
             });
         });
-        
-        // Ensure all GPU engine and CPU core arrays have the full length after processing all rows
+
         const totalRows = rawData.length;
         gpuEngineNames.forEach(engineName => {
-             if (gpuEngines[engineName]) {
-                 while (gpuEngines[engineName].length < totalRows) {
-                     gpuEngines[engineName].push(null);
-                  }
-              }
-           });
+            if (gpuEngines[engineName]) {
+                while (gpuEngines[engineName].length < totalRows) {
+                    gpuEngines[engineName].push(null);
+                }
+            }
+        });
 
-        // Common chart options
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'top',
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                }
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
             },
             scales: {
-                x: {
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.1)',
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.1)',
-                    }
-                }
+                x: { grid: { color: 'rgba(0, 0, 0, 0.1)' } },
+                y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.1)' } }
             }
         };
 
-        // Helper function to create a chart
         function createChart(canvasId, label, data, color, yAxisLabel, min = null, max = null) {
             const ctx = document.getElementById(canvasId).getContext('2d');
-            
-            // Deep clone the common options
             const options = JSON.parse(JSON.stringify(commonOptions));
-            
-            // Set y-axis label
-            options.scales.y.title = {
-                display: true,
-                text: yAxisLabel
-            };
-            
-            // Set min/max if provided
+            options.scales.y.title = { display: true, text: yAxisLabel };
             if (min !== null) options.scales.y.min = min;
             if (max !== null) options.scales.y.max = max;
-            
             return new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -721,157 +619,74 @@ $reportContent = @"
             });
         }
 
-        // Helper function to create a multi-dataset chart
         function createMultiChart(canvasId, datasets, yAxisLabel, min = null, max = null) {
             const ctx = document.getElementById(canvasId).getContext('2d');
-            
-            // Deep clone the common options
             const options = JSON.parse(JSON.stringify(commonOptions));
-            
-            // Set y-axis label
-            options.scales.y.title = {
-                display: true,
-                text: yAxisLabel
-            };
-            
-            // Set min/max if provided
+            options.scales.y.title = { display: true, text: yAxisLabel };
             if (min !== null) options.scales.y.min = min;
             if (max !== null) options.scales.y.max = max;
-            
             return new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: timestamps,
-                    datasets: datasets
-                },
+                data: { labels: timestamps, datasets: datasets },
                 options: options
             });
         }
 
-        // Create CPU Usage Chart
         createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100);
 
-        // Create RAM Chart with multiple datasets
         createMultiChart('ramChart', [
-            {
-                label: 'RAM Used',
-                data: ramUsed,
-                borderColor: 'rgb(54, 162, 235)',
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderWidth: 2,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10
-            },
-            {
-                label: 'RAM Available',
-                data: ramAvailable,
-                borderColor: 'rgb(75, 192, 192)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                borderWidth: 2,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10
-            }
+            { label: 'RAM Used', data: ramUsed, borderColor: 'rgb(54, 162, 235)', backgroundColor: 'rgba(54, 162, 235, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },
+            { label: 'RAM Available', data: ramAvailable, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
         ], 'Memory (MB)');
 
-        // Create Disk I/O Chart
         createChart('diskChart', 'Disk Transfers/sec', diskIO, 'rgb(255, 159, 64)', 'Transfers/sec');
-
-        // Create Network I/O Chart
         createChart('networkChart', 'Network Bytes/sec', networkIO, 'rgb(153, 102, 255)', 'Bytes/sec');
-
-        // Create CPU and GPU Temperature Chart
-        createMultiChart('tempChart', [
-            {
-                label: 'CPU Temperature',
-                data: cpuTemp,
-                borderColor: 'rgb(255, 99, 132)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                borderWidth: 2,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10
-            }
-        ], 'Temperature (°C)');
-
-        // Create Screen Brightness & Battery Percentage Chart
+        createChart('tempChart', 'CPU Temperature', cpuTemp, 'rgb(255, 99, 132)', 'Temperature (°C)');
         createMultiChart('brightnessChart', [
-            {
-                label: 'Screen Brightness',
-                data: screenBrightness,
-                borderColor: 'rgb(255, 206, 86)', // Yellow/Orange
-                backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                borderWidth: 2,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10
-            },
-            {
-                label: 'Battery',
-                data: batteryPercentage,
-                borderColor: 'rgb(75, 192, 192)', // Green/Teal
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                borderWidth: 2,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10
-            }
+            { label: 'Screen Brightness', data: screenBrightness, borderColor: 'rgb(255, 206, 86)', backgroundColor: 'rgba(255, 206, 86, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },
+            { label: 'Battery', data: batteryPercentage, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
         ], 'Percentage (%)', 0, 100);
 
-        // REMOVED CPU Core Clock Speed Chart creation
-        
-        // Create GPU Engine Utilization Chart
         const ctxGpuEngine = document.getElementById('gpuEngineChart').getContext('2d');
         if (gpuEngineNames.length > 0) {
             const engineDatasets = [];
-            const engineColors = [ // Use a predefined color list
-                 { border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.2)' }, { border: 'rgb(54, 162, 235)', background: 'rgba(54, 162, 235, 0.2)' },
-                 { border: 'rgb(255, 206, 86)', background: 'rgba(255, 206, 86, 0.2)' }, { border: 'rgb(75, 192, 192)', background: 'rgba(75, 192, 192, 0.2)' },
-                 { border: 'rgb(153, 102, 255)', background: 'rgba(153, 102, 255, 0.2)' }, { border: 'rgb(255, 159, 64)', background: 'rgba(255, 159, 64, 0.2)' }
+            const engineColors = [
+                { border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.2)' }, { border: 'rgb(54, 162, 235)', background: 'rgba(54, 162, 235, 0.2)' },
+                { border: 'rgb(255, 206, 86)', background: 'rgba(255, 206, 86, 0.2)' }, { border: 'rgb(75, 192, 192)', background: 'rgba(75, 192, 192, 0.2)' },
+                { border: 'rgb(153, 102, 255)', background: 'rgba(153, 102, 255, 0.2)' }, { border: 'rgb(255, 159, 64)', background: 'rgba(255, 159, 64, 0.2)' }
             ];
             gpuEngineNames.forEach((engineName, i) => {
-                 const colorIndex = i % engineColors.length;
-                 engineDatasets.push({
-                     label: engineName,
-                     data: gpuEngines[engineName],
-                     borderColor: engineColors[colorIndex].border,
-                     backgroundColor: engineColors[colorIndex].background,
-                     borderWidth: 2,
-                     tension: 0.4,
-                     pointRadius: 0,
-                     pointHoverRadius: 4,
-                     pointHitRadius: 10
-                 });
+                const colorIndex = i % engineColors.length;
+                engineDatasets.push({
+                    label: engineName,
+                    data: gpuEngines[engineName],
+                    borderColor: engineColors[colorIndex].border,
+                    backgroundColor: engineColors[colorIndex].background,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointHitRadius: 10
+                });
             });
-            
             createMultiChart('gpuEngineChart', engineDatasets, 'Utilization (%)', 0, 100);
-            
         } else {
-             // Display a message if no GPU Engine data is found
-             const gpuEngineCanvas = document.getElementById('gpuEngineChart');
-             if (gpuEngineCanvas) {
-                 const ctx = gpuEngineCanvas.getContext('2d');
-                 ctx.font = '20px Arial';
-                 ctx.textAlign = 'center';
-                 ctx.fillStyle = '#666';
-                 ctx.fillText('No GPU Engine Utilization data found in CSV', gpuEngineCanvas.width / 2, gpuEngineCanvas.height / 2);
-             }
+            const gpuEngineCanvas = document.getElementById('gpuEngineChart');
+            if (gpuEngineCanvas) {
+                const ctx = gpuEngineCanvas.getContext('2d');
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#666';
+                ctx.fillText('No GPU Engine Utilization data found in CSV', gpuEngineCanvas.width / 2, gpuEngineCanvas.height / 2);
+            }
         }
-        
     </script>
 </body>
 </html>
 "@
 
-# Save the main chart report to its HTML file
-Write-Host "Saving main chart report to $htmlOutputPath..."
+# Save the report to the HTML file
+Write-Host "Saving report to $htmlOutputPath..."
 $reportContent | Out-File -FilePath $htmlOutputPath -Encoding UTF8 -Force
 
-Write-Host "Main chart report generated successfully: $htmlOutputPath"
-Write-Host "Summary report generated successfully: $summaryHtmlOutputPath"
+Write-Host "Report generated successfully: $htmlOutputPath"
