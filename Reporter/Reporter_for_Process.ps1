@@ -137,6 +137,68 @@ $topProcesses = $processList.Keys | ForEach-Object {
 # Unique sorted timestamps - this is a quick operation
 $timestamps = $data | Select-Object -ExpandProperty Timestamp | Sort-Object -Unique
 
+# --- Aggregation: Build base name map and pre-group data by timestamp and process name ---
+Write-Host "Pre-grouping data for aggregation..."
+$dataByTimestampAndProcessName = @{}
+$data | ForEach-Object {
+    $ts = $_.Timestamp
+    $procName = $_.ProcessName
+    if (-not $dataByTimestampAndProcessName.ContainsKey($ts)) {
+        $dataByTimestampAndProcessName[$ts] = @{}
+    }
+    $dataByTimestampAndProcessName[$ts][$procName] = $_
+}
+
+$baseNameMap = @{}
+$data | Select-Object -ExpandProperty ProcessName -Unique | ForEach-Object {
+    $origName = $_
+    if ($origName -match '^(.*?)(#\d+)?$') {
+        $base = $matches[1]
+        if (-not $baseNameMap.ContainsKey($base)) {
+            $baseNameMap[$base] = [System.Collections.Generic.List[string]]::new()
+        }
+        $baseNameMap[$base].Add($origName)
+    }
+}
+Write-Host "Base name map created. Starting per-timestamp aggregation..."
+
+# For each timestamp, sum metrics for all instances of each base name
+$aggregatedByBaseAndTimestamp = @{}
+foreach ($timestamp in $timestamps) {
+    foreach ($base in $baseNameMap.Keys) {
+        $sumCPU = 0.0; $sumRAM = 0.0; $sumRead = 0.0; $sumWrite = 0.0; $sumDedicated = 0.0; $sumShared = 0.0
+        $found = $false
+        if ($baseNameMap.ContainsKey($base)) {
+            foreach ($inst in $baseNameMap[$base]) {
+                if ($dataByTimestampAndProcessName.ContainsKey($timestamp) -and $dataByTimestampAndProcessName[$timestamp].ContainsKey($inst)) {
+                    $row = $dataByTimestampAndProcessName[$timestamp][$inst]
+                    $found = $true
+                    $sumCPU += [double]$row.CPUPercent
+                    $sumRAM += [double]$row.RAM_MB
+                    $sumRead += [double]$row.IOReadBytesPerSec
+                    $sumWrite += [double]$row.IOWriteBytesPerSec
+                    $sumDedicated += [double]$row.GPUDedicatedMemoryMB
+                    $sumShared += [double]$row.GPUSharedMemoryMB
+                }
+            }
+        }
+        if ($found) {
+            if (-not $aggregatedByBaseAndTimestamp.ContainsKey($base)) {
+                $aggregatedByBaseAndTimestamp[$base] = @{}
+            }
+            $aggregatedByBaseAndTimestamp[$base][$timestamp] = @{
+                CPU = $sumCPU
+                RAM = $sumRAM
+                Read = $sumRead
+                Write = $sumWrite
+                Dedicated = $sumDedicated
+                Shared = $sumShared
+            }
+        }
+    }
+}
+Write-Host "Per-timestamp aggregation complete."
+
 # Prepare series for charts using our indexed lookup for dramatically faster access
 Write-Host "Processing chart data for top processes..."
 $colors = '255,99,132','54,162,235','255,159,64','75,192,192','153,102,255'
@@ -237,16 +299,56 @@ $processData = @{} # Prepare data for the JSON
 
 $uniqueProcesses = $processList.Keys | Sort-Object # Sort names if needed for dropdown order
 
-foreach ($processName in $uniqueProcesses) {
-    $procEntry = $processList[$processName]
-    $count = $procEntry.Count
-    if ($count -eq 0) { continue } # Skip if no data points
+# Add aggregated process names for dropdowns
+# Identify base names that have more than one instance
+$multiInstanceBaseNames = $baseNameMap.Keys | Where-Object { ($baseNameMap[$_]).Count -gt 1 }
 
-    # Calculate Averages
-    $avgCPU = $procEntry.CPUSum / $count
-    $avgRAM = $procEntry.RAMSum / $count
-    $avgDedicatedVRAM = $procEntry.DedicatedVRAMSum / $count
-    $avgSharedVRAM = $procEntry.SharedVRAMSum / $count
+# Create the list for dropdowns
+$dropdownNameList = [System.Collections.Generic.List[string]]::new()
+
+# Add all original process names
+foreach ($upn in $uniqueProcesses) { # Corrected AddRange to handle potential type mismatch
+    $dropdownNameList.Add($upn)
+}
+
+# Add "Aggregated [BaseName]" for multi-instance base names
+foreach ($baseName in $multiInstanceBaseNames) {
+    $dropdownNameList.Add("Aggregated $baseName")
+}
+
+$allDropdownNames = $dropdownNameList | Sort-Object -Unique
+
+foreach ($processName in $allDropdownNames) {
+    $isAggregated = $false
+    $cpuPoints = @(); $ramPoints = @(); $dedicatedVRAMPoints = @(); $sharedVRAMPoints = @()
+    $readIOPoints = @(); $writeIOPoints = @()
+    $color = 'rgb(0, 130, 0)'
+    if ($processName -like "Aggregated *") {
+        $isAggregated = $true
+        $base = $processName -replace "^Aggregated ", ""
+        foreach ($timestamp in $timestamps) {
+            $agg = $aggregatedByBaseAndTimestamp[$base][$timestamp]
+            $cpuPoints += $agg.CPU
+            $ramPoints += $agg.RAM
+            $readIOPoints += $agg.Read
+            $writeIOPoints += $agg.Write
+            $dedicatedVRAMPoints += $agg.Dedicated
+            $sharedVRAMPoints += $agg.Shared
+        }
+    } else {
+        $procEntry = $processList[$processName]
+        $count = $procEntry.Count
+        if ($count -eq 0) { continue } # Skip if no data points
+        $cpuPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.CPUPercent }
+        $ramPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.RAM_MB }
+        $dedicatedVRAMPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.GPUDedicatedMemoryMB }
+        $sharedVRAMPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.GPUSharedMemoryMB }
+        $readIOPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.IOReadBytesPerSec }
+        $writeIOPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.IOWriteBytesPerSec }
+        $color = if (($cpuPoints | Measure-Object -Average).Average -gt 30) {'rgb(190, 0, 0)'}
+                elseif (($cpuPoints | Measure-Object -Average).Average -ge 10) {'rgb(255, 204, 0)'}
+                else {'rgb(0, 130, 0)'}
+    }
 
     # Calculate Medians
     function Get-Median($values) {
@@ -263,87 +365,47 @@ foreach ($processName in $uniqueProcesses) {
         }
     }
 
-    $cpuPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.CPUPercent }
-    $ramPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.RAM_MB }
-    $dedicatedVRAMPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.GPUDedicatedMemoryMB }
-    $sharedVRAMPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.GPUSharedMemoryMB }
-
     $medianCPU = [math]::Round((Get-Median $cpuPoints), 2)
     $medianRAM = [math]::Round((Get-Median $ramPoints), 2)
     $medianDedicatedVRAM = [math]::Round((Get-Median $dedicatedVRAMPoints), 2)
     $medianSharedVRAM = [math]::Round((Get-Median $sharedVRAMPoints), 2)
 
-    # Format the averages
-    $avgCPUFormatted = [math]::Round($avgCPU, 2)
-    $avgRAMFormatted = [math]::Round($avgRAM, 2)
-    $avgDedicatedVRAMFormatted = [math]::Round($avgDedicatedVRAM, 2)
-    $avgSharedVRAMFormatted = [math]::Round($avgSharedVRAM, 2)
+    $avgCPUFormatted = [math]::Round((($cpuPoints | Measure-Object -Average).Average), 2)
+    $avgRAMFormatted = [math]::Round((($ramPoints | Measure-Object -Average).Average), 2)
+    $avgDedicatedVRAMFormatted = [math]::Round((($dedicatedVRAMPoints | Measure-Object -Average).Average), 2)
+    $avgSharedVRAMFormatted = [math]::Round((($sharedVRAMPoints | Measure-Object -Average).Average), 2)
 
-    # Build stats objects (using ArrayList.Add is faster than +=)
     [void]$processStats.Add([PSCustomObject]@{
         Name   = $processName
         AvgCPU = $avgCPUFormatted
         MedianCPU = $medianCPU
-        Color  = if ($avgCPU -gt 30) {'rgb(190, 0, 0)'}
-                 elseif ($avgCPU -ge 10) {'rgb(255, 204, 0)'}
-                 else {'rgb(0, 130, 0)'}
+        Color  = $color
+        IsAggregated = $isAggregated
     })
-    
+
     [void]$ramStats.Add([PSCustomObject]@{
         Name   = $processName
         AvgRAM = $avgRAMFormatted
         MedianRAM = $medianRAM
+        IsAggregated = $isAggregated
     })
-    
+
     [void]$vramStatsDedicated.Add([PSCustomObject]@{
         Name = $processName
         AvgDedicatedVRAM = $avgDedicatedVRAMFormatted
         MedianDedicatedVRAM = $medianDedicatedVRAM
-        Color = if ($avgDedicatedVRAM -gt 300) {'rgb(190, 0, 0)'}
-                elseif ($avgDedicatedVRAM -ge 100) {'rgb(255, 204, 0)'}
-                else {'rgb(0, 130, 0)'}
+        Color = $color
+        IsAggregated = $isAggregated
     })
-    
+
     [void]$vramStatsShared.Add([PSCustomObject]@{
         Name = $processName
         AvgSharedVRAM = $avgSharedVRAMFormatted
         MedianSharedVRAM = $medianSharedVRAM
+        IsAggregated = $isAggregated
     })
 
-    # --- Prepare data for $processData JSON ---
-    # We need the individual data points for the charts
-    $timestamps = $procEntry.RawData.Keys | Sort-Object
-    
-    $cpuPoints = $timestamps | ForEach-Object {
-        $ts = $_
-        if ($procEntry.RawData.Contains($ts)) { [double]$procEntry.RawData[$ts].CPUPercent } else { $null }
-    }
-    
-    $ramPoints = $timestamps | ForEach-Object {
-        $ts = $_
-        if ($procEntry.RawData.Contains($ts)) { [double]$procEntry.RawData[$ts].RAM_MB } else { $null }
-    }
-    
-    $readIOPoints = $timestamps | ForEach-Object {
-        $ts = $_
-        if ($procEntry.RawData.Contains($ts)) { [double]$procEntry.RawData[$ts].IOReadBytesPerSec } else { $null }
-    }
-    
-    $writeIOPoints = $timestamps | ForEach-Object {
-        $ts = $_
-        if ($procEntry.RawData.Contains($ts)) { [double]$procEntry.RawData[$ts].IOWriteBytesPerSec } else { $null }
-    }
-    
-    $dedicatedVRAMPoints = $timestamps | ForEach-Object {
-        $ts = $_
-        if ($procEntry.RawData.Contains($ts)) { [double]$procEntry.RawData[$ts].GPUDedicatedMemoryMB } else { $null }
-    }
-    
-    $sharedVRAMPoints = $timestamps | ForEach-Object {
-        $ts = $_
-        if ($procEntry.RawData.Contains($ts)) { [double]$procEntry.RawData[$ts].GPUSharedMemoryMB } else { $null }
-    }
-
+    # Prepare data for $processData JSON
     $processData[$processName] = [PSCustomObject]@{
         CPU = $cpuPoints
         RAM = $ramPoints
@@ -552,7 +614,11 @@ const sel = document.getElementById('processSelect');
 processList.forEach(p => {
   const o = document.createElement('option');
   o.value = p.Name;
-  o.text = p.Name + ' (' + p.MedianCPU + '%)';
+  if (p.IsAggregated === true) { // Explicit boolean check
+    o.innerHTML = '<strong>' + p.Name + ' (' + p.MedianCPU + '%)</strong>';
+  } else {
+    o.text = p.Name + ' (' + p.MedianCPU + '%)';
+  }
   o.style.color = p.Color;
   sel.appendChild(o);
 });
@@ -565,7 +631,11 @@ ramSel.innerHTML = '<option value="">Sort by median RAM usage</option>';
 ramList.forEach(p => {
   const o2 = document.createElement('option');
   o2.value = p.Name;
-  o2.text = p.Name + ' (' + p.MedianRAM + 'MB)';
+  if (p.IsAggregated === true) { // Explicit boolean check
+    o2.innerHTML = '<strong>' + p.Name + ' (' + p.MedianRAM + 'MB)</strong>';
+  } else {
+    o2.text = p.Name + ' (' + p.MedianRAM + 'MB)';
+  }
   if (p.AvgRAM > 1000) o2.style.color = 'rgb(190, 0, 0)';
   else if (p.AvgRAM >= 300) o2.style.color = 'rgb(255, 204, 0)';
   else o2.style.color = 'rgb(0, 130, 0)';
@@ -580,7 +650,11 @@ vramSel.innerHTML = '<option value="">Sort by median Dedicated VRAM</option>';
 vramListDedicated.forEach(p => {
   const o3 = document.createElement('option');
   o3.value = p.Name;
-  o3.text = p.Name + ' (' + p.MedianDedicatedVRAM + 'MB)';
+  if (p.IsAggregated === true) { // Explicit boolean check
+    o3.innerHTML = '<strong>' + p.Name + ' (' + p.MedianDedicatedVRAM + 'MB)</strong>';
+  } else {
+    o3.text = p.Name + ' (' + p.MedianDedicatedVRAM + 'MB)';
+  }
   // Color coding: <100MB = green, 100-300MB = yellow, >300MB = red
   if (p.AvgDedicatedVRAM > 300) o3.style.color = 'rgb(190, 0, 0)';
   else if (p.AvgDedicatedVRAM >= 100) o3.style.color = 'rgb(255, 204, 0)';
@@ -597,7 +671,11 @@ vramSharedSel.innerHTML = '<option value="">Sort by median Shared VRAM</option>'
 vramListShared.forEach(p => {
   const o4 = document.createElement('option');
   o4.value = p.Name;
-  o4.text = p.Name + ' (' + p.MedianSharedVRAM + 'MB)';
+  if (p.IsAggregated === true) { // Explicit boolean check
+    o4.innerHTML = '<strong>' + p.Name + ' (' + p.MedianSharedVRAM + 'MB)</strong>';
+  } else {
+    o4.text = p.Name + ' (' + p.MedianSharedVRAM + 'MB)';
+  }
   // Color coding: <100MB = green, 100-300MB = yellow, >300MB = red
   if (p.AvgSharedVRAM > 300) o4.style.color = 'rgb(190, 0, 0)';
   else if (p.AvgSharedVRAM >= 100) o4.style.color = 'rgb(255, 204, 0)';
