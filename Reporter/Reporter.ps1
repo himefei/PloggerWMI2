@@ -61,11 +61,32 @@ function Get-MetricStatistics {
     
     # Calculate statistics
     $stats = $numericValues | Measure-Object -Average -Minimum -Maximum
-    
+
+    # Calculate median
+    $sorted = $numericValues | Sort-Object
+    $count = $sorted.Count
+    $medianValue = "N/A" # Renamed to avoid conflict with the key in the return hash
+    if ($count -gt 0) {
+        if ($count % 2 -eq 1) {
+            $medianValue = $sorted[([int][math]::Floor($count/2))]
+        } else {
+            $mid1 = $sorted[($count/2)-1]
+            $mid2 = $sorted[($count/2)]
+            $medianValue = (($mid1 + $mid2) / 2)
+        }
+    }
+
+    if ($medianValue -ne "N/A") {
+        $medianDisplay = [math]::Round($medianValue, 2)
+    } else {
+        $medianDisplay = "N/A"
+    }
+
     return @{
         Label = $Label
         Unit = $Unit
         Average = [math]::Round($stats.Average, 2)
+        Median = $medianDisplay # Use the rounded or "N/A" value
         Minimum = [math]::Round($stats.Minimum, 2)
         Maximum = [math]::Round($stats.Maximum, 2)
         Available = $true
@@ -230,10 +251,25 @@ function Get-AllCoreClockStatistics {
 
     $stats = $allCoreClockValues | Measure-Object -Average -Minimum -Maximum
 
+    # Calculate median
+    $sorted = $allCoreClockValues | Sort-Object
+    $count = $sorted.Count
+    $median = "N/A"
+    if ($count -gt 0) {
+        if ($count % 2 -eq 1) {
+            $median = [math]::Round($sorted[([int][math]::Floor($count/2))], 0)
+        } else {
+            $mid1 = $sorted[($count/2)-1]
+            $mid2 = $sorted[($count/2)]
+            $median = [math]::Round((($mid1 + $mid2) / 2), 0)
+        }
+    }
+
     return @{
         Label = $Label
         Unit = $Unit
         Average = [math]::Round($stats.Average, 0)
+        Median = $median
         Minimum = [math]::Round($stats.Minimum, 0)
         Maximum = [math]::Round($stats.Maximum, 0)
         Available = $true
@@ -316,9 +352,9 @@ foreach ($metricInfo in $metricsToSummarize) {
     if ($data[0].PSObject.Properties.Name -contains $metricInfo.Name) {
         $stats = Get-MetricStatistics -Data $data -PropertyName $metricInfo.Name -Label $metricInfo.Label -Unit $metricInfo.Unit
         if ($stats.Available) {
-            $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
+            $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Median) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
         } else {
-            $statsTableRows.Add("<tr><td>$($metricInfo.Label)</td><td colspan='3'>N/A (column present but no valid data)</td></tr>")
+            $statsTableRows.Add("<tr><td>$($metricInfo.Label)</td><td colspan='4'>N/A (column present but no valid data)</td></tr>")
         }
     }
 }
@@ -327,9 +363,9 @@ foreach ($metricInfo in $metricsToSummarize) {
 if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains "CPUCoreClocks") {
     $cpuClockStats = Get-AllCoreClockStatistics -Data $data
     if ($cpuClockStats.Available) {
-        $statsTableRows.Add("<tr><td>$($cpuClockStats.Label)</td><td>$($cpuClockStats.Average) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Minimum) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Maximum) $($cpuClockStats.Unit)</td></tr>")
+        $statsTableRows.Add("<tr><td>$($cpuClockStats.Label)</td><td>$($cpuClockStats.Average) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Median) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Minimum) $($cpuClockStats.Unit)</td><td>$($cpuClockStats.Maximum) $($cpuClockStats.Unit)</td></tr>")
     } else {
-        $statsTableRows.Add("<tr><td>$($cpuClockStats.Label)</td><td colspan='3'>N/A (column present but no valid data or parsing issues)</td></tr>")
+        $statsTableRows.Add("<tr><td>$($cpuClockStats.Label)</td><td colspan='4'>N/A (column present but no valid data or parsing issues)</td></tr>")
     }
 }
 
@@ -349,9 +385,9 @@ foreach ($gpuType in @('iGPU', 'dGPU')) {
                 
                 $stats = Get-MetricStatistics -Data $data -PropertyName $columnName -Label $label -Unit $unit
                  if ($stats.Available) {
-                    $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
+                    $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Median) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
                 } else {
-                    $statsTableRows.Add("<tr><td>$label</td><td colspan='3'>N/A (column present but no valid data)</td></tr>")
+                    $statsTableRows.Add("<tr><td>$label</td><td colspan='4'>N/A (column present but no valid data)</td></tr>")
                 }
             }
         }
@@ -367,6 +403,7 @@ if ($statsTableRows.Count -gt 0) {
             <tr>
                 <th>Metric</th>
                 <th>Average</th>
+                <th>Median</th>
                 <th>Minimum</th>
                 <th>Maximum</th>
             </tr>
@@ -397,22 +434,34 @@ if ($data.Count -gt 0) {
     $batteryPercentage = $lastRow.BatteryPercentage
 
     # WMI battery capacity columns
-    $batteryDesignCapacity = $null
-    $batteryFullChargedCapacity = $null
-    $batteryRemainingCapacity = $null
-    $batteryDischargeRate = $null
+    $batteryDesignCapacity = "Data not available"
+    $batteryFullChargedCapacity = "Data not available"
+    $batteryRemainingCapacity = "Data not available"
+    $batteryDischargeRate = "Data not available"
 
-    if ($lastRow.PSObject.Properties.Name -contains 'BatteryDesignCapacitymWh') {
-        $batteryDesignCapacity = $lastRow.BatteryDesignCapacitymWh
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryDesignCapacity_mWh') {
+        $val = $lastRow.BatteryDesignCapacity_mWh
+        if ($null -ne $val -and $val -ne "" -and $val -ne "N/A" -and $val -ne "Error") {
+            $batteryDesignCapacity = "$val mWh"
+        }
     }
-    if ($lastRow.PSObject.Properties.Name -contains 'BatteryFullChargedCapacitymWh') {
-        $batteryFullChargedCapacity = $lastRow.BatteryFullChargedCapacitymWh
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryFullChargedCapacity_mWh') {
+        $val = $lastRow.BatteryFullChargedCapacity_mWh
+        if ($null -ne $val -and $val -ne "" -and $val -ne "N/A" -and $val -ne "Error") {
+            $batteryFullChargedCapacity = "$val mWh"
+        }
     }
-    if ($lastRow.PSObject.Properties.Name -contains 'BatteryRemainingCapacitymWh') {
-        $batteryRemainingCapacity = $lastRow.BatteryRemainingCapacitymWh
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryRemainingCapacity_mWh') {
+        $val = $lastRow.BatteryRemainingCapacity_mWh
+        if ($null -ne $val -and $val -ne "" -and $val -ne "N/A" -and $val -ne "Error") {
+            $batteryRemainingCapacity = "$val mWh"
+        }
     }
     if ($lastRow.PSObject.Properties.Name -contains 'BatteryDischargeRateW') {
-        $batteryDischargeRate = $lastRow.BatteryDischargeRateW
+        $val = $lastRow.BatteryDischargeRateW
+        if ($null -ne $val -and $val -ne "" -and $val -ne "N/A" -and $val -ne "Error") {
+            $batteryDischargeRate = "$val W"
+        }
     }
 
     $powerStatisticsSectionHtml = @"
