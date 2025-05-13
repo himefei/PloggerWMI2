@@ -615,7 +615,7 @@ processList.forEach(p => {
   const o = document.createElement('option');
   o.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o.innerHTML = '<strong>' + p.Name + ' (' + p.MedianCPU + '%)</strong>';
+    o.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianCPU + '%)';
   } else {
     o.text = p.Name + ' (' + p.MedianCPU + '%)';
   }
@@ -632,7 +632,7 @@ ramList.forEach(p => {
   const o2 = document.createElement('option');
   o2.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o2.innerHTML = '<strong>' + p.Name + ' (' + p.MedianRAM + 'MB)</strong>';
+    o2.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianRAM + 'MB)';
   } else {
     o2.text = p.Name + ' (' + p.MedianRAM + 'MB)';
   }
@@ -651,7 +651,7 @@ vramListDedicated.forEach(p => {
   const o3 = document.createElement('option');
   o3.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o3.innerHTML = '<strong>' + p.Name + ' (' + p.MedianDedicatedVRAM + 'MB)</strong>';
+    o3.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianDedicatedVRAM + 'MB)';
   } else {
     o3.text = p.Name + ' (' + p.MedianDedicatedVRAM + 'MB)';
   }
@@ -672,7 +672,7 @@ vramListShared.forEach(p => {
   const o4 = document.createElement('option');
   o4.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o4.innerHTML = '<strong>' + p.Name + ' (' + p.MedianSharedVRAM + 'MB)</strong>';
+    o4.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianSharedVRAM + 'MB)';
   } else {
     o4.text = p.Name + ' (' + p.MedianSharedVRAM + 'MB)';
   }
