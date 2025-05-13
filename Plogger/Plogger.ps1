@@ -320,6 +320,9 @@ function Capture-ResourceUsage {
             $diskIOVal = $null
             $networkIOVal = $null
             $batteryVal = $null
+            $batteryFullChargedCapacity_mWh = $null
+            $batteryRemainingCapacity_mWh = $null
+            $batteryDesignCapacity_mWh = $null
            $brightnessVal = $null
            $cpuTempVal = $null
            
@@ -406,15 +409,25 @@ function Capture-ResourceUsage {
             # --- END Network IO ---
             
             # --- Battery monitoring with multiple methods and WMI classes ---
-            try { 
+            try {
                 # PRIMARY METHOD: Get battery data from ROOT\cimv2 namespace
                 $batteryVal = $null
-                $batteries = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName Win32_Battery -ErrorAction Stop
+                $batteries = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName Win32_Battery -ErrorAction SilentlyContinue
                 
                 # Check if any batteries were found
                 if ($batteries -and $batteries.Count -gt 0) {
                     # Get charge remaining from the first battery
                     $batteryVal = $batteries[0].EstimatedChargeRemaining
+
+                    # Try to get DesignCapacity from Win32_Battery
+                    try {
+                        $batteryDesignCapacity_mWh = $batteries[0].DesignCapacity
+                        if ($null -ne $batteryDesignCapacity_mWh) {
+                            Write-Verbose "DesignCapacity from Win32_Battery: $batteryDesignCapacity_mWh mWh"
+                        }
+                    } catch {
+                        Write-Verbose "Could not get DesignCapacity from Win32_Battery: $($_.Exception.Message)"
+                    }
                     
                     # Also capture battery status info for more detailed reporting
                     $batteryStatus = $batteries[0].BatteryStatus
@@ -437,34 +450,46 @@ function Capture-ResourceUsage {
                     if (-not $script:batteryWarningLogged) {
                         Write-Host "Battery detected: $batteryVal% ($batteryStatusText)"
                     }
-                } 
+                }
                 
-                # FALLBACK METHOD: If no battery data from primary method, try ROOT\WMI namespace classes
-                if ($null -eq $batteryVal) {
-                    try {
-                        # Try getting data from ROOT\WMI namespace
-                        $wmiNamespace = "ROOT\WMI"
-                        $fullChargedCapacity = (Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryFullChargedCapacity" -ErrorAction Stop).FullChargedCapacity
-                        $remainingCapacity = (Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStatus" -ErrorAction Stop).RemainingCapacity
-                        
-                        # Calculate percentage if both values are valid
-                        if ($fullChargedCapacity -gt 0 -and $null -ne $remainingCapacity) {
-                            $batteryVal = [Math]::Round(($remainingCapacity / $fullChargedCapacity) * 100)
-                            
-                            # Additional battery data we could use in the future
-                            $dischargeRate = (Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStatus" -ErrorAction Stop).DischargeRate
-                            $charging = (Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStatus" -ErrorAction Stop).Charging
-                            $powerOnline = (Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStatus" -ErrorAction Stop).PowerOnline
-                            
-                            # Log that we're using the fallback method
-                            if (-not $script:batteryWarningLogged) {
-                                Write-Host "Battery detected (using ROOT\WMI): $batteryVal%"
-                                Write-Verbose "Additional battery info - Charging: $charging, PowerOnline: $powerOnline, DischargeRate: $dischargeRate"
-                            }
-                        }
-                    } catch {
-                        Write-Verbose "Fallback battery detection failed: $($_.Exception.Message)"
+                # FALLBACK METHOD: If no battery data from primary method, or to get mWh values, try ROOT\WMI namespace classes
+                $wmiNamespace = "ROOT\WMI"
+                try {
+                    # Get FullChargedCapacity
+                    $fccInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryFullChargedCapacity" -ErrorAction SilentlyContinue
+                    if ($fccInstance) {
+                        $batteryFullChargedCapacity_mWh = $fccInstance.FullChargedCapacity
+                        Write-Verbose "FullChargedCapacity from ROOT\WMI: $batteryFullChargedCapacity_mWh mWh"
                     }
+
+                    # Get RemainingCapacity
+                    $bsInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStatus" -ErrorAction SilentlyContinue
+                    if ($bsInstance) {
+                        $batteryRemainingCapacity_mWh = $bsInstance.RemainingCapacity
+                        Write-Verbose "RemainingCapacity from ROOT\WMI: $batteryRemainingCapacity_mWh mWh"
+                    }
+                    
+                    # Attempt to get DesignCapacity from BatteryStaticData (prioritized for ROOT\WMI)
+                    $bsdInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStaticData" -ErrorAction SilentlyContinue
+                    if ($bsdInstance -and $bsdInstance.DesignedCapacity) {
+                        $batteryDesignCapacity_mWh_static = $bsdInstance.DesignedCapacity
+                        Write-Verbose "DesignCapacity from ROOT\WMI\BatteryStaticData: $batteryDesignCapacity_mWh_static mWh"
+                        # If Win32_Battery didn't provide it, or if we prefer the ROOT\WMI one when available
+                        if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh_static -ne $null) {
+                             $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_static
+                        }
+                    }
+
+                    # Calculate percentage if both mWh values are valid from ROOT\WMI
+                    if ($null -ne $batteryFullChargedCapacity_mWh -and $batteryFullChargedCapacity_mWh -gt 0 -and $null -ne $batteryRemainingCapacity_mWh) {
+                        $batteryVal = [Math]::Round(($batteryRemainingCapacity_mWh / $batteryFullChargedCapacity_mWh) * 100)
+                        # Log that we're using the fallback method for percentage calculation
+                        if (-not $script:batteryWarningLogged) {
+                            Write-Host "Battery percentage ($batteryVal%) calculated using ROOT\WMI mWh values."
+                        }
+                    }
+                } catch {
+                    Write-Verbose "Fallback battery mWh detection (ROOT\WMI) failed: $($_.Exception.Message)"
                 }
                 
                 # If still no battery data, mark as N/A (desktop PC)
@@ -474,15 +499,21 @@ function Capture-ResourceUsage {
                     }
                     $batteryVal = "N/A" # Use N/A to indicate desktop PC
                 }
+                if ($null -eq $batteryFullChargedCapacity_mWh) { $batteryFullChargedCapacity_mWh = "N/A" }
+                if ($null -eq $batteryRemainingCapacity_mWh) { $batteryRemainingCapacity_mWh = "N/A" }
+                if ($null -eq $batteryDesignCapacity_mWh) { $batteryDesignCapacity_mWh = "N/A" }
                 
                 $script:batteryWarningLogged = $true
                 
-            } catch { 
+            } catch {
                 if (-not $script:batteryWarningLogged) {
                     Write-Warning "Failed to get Battery Status: $($_.Exception.Message)"
                     $script:batteryWarningLogged = $true
                 }
                 $batteryVal = "Error"  # Indicate an error occurred
+                if ($null -eq $batteryFullChargedCapacity_mWh) { $batteryFullChargedCapacity_mWh = "Error" }
+                if ($null -eq $batteryRemainingCapacity_mWh) { $batteryRemainingCapacity_mWh = "Error" }
+                if ($null -eq $batteryDesignCapacity_mWh) { $batteryDesignCapacity_mWh = "Error" }
             }
             # --- END Battery monitoring ---
             
@@ -583,22 +614,25 @@ function Capture-ResourceUsage {
 
             # Create the base data object with metrics
             $currentData = [PSCustomObject]@{
-                Timestamp              = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                # CPUUsagePercentTime    = $cpuTimeVal # REMOVED
-                CPUUsagePercent        = $cpuUtilityVal # RENAMED from CPUUsagePercentUtility
-                CPUMaxClockSpeedMHz    = $cpuMaxClockSpeedMHz
-                RAMUsedMB              = $ramUsedMBVal
-                RAMAvailableMB         = $ramAvailableMBVal
-                DiskIOTransferSec      = $diskIOVal
-                NetworkIOBytesSec      = $networkIOVal
-                BatteryPercentage      = $batteryVal
-                ScreenBrightness       = $brightnessVal
-               CPUTemperatureC        = if ($null -ne $cpuTempVal) { [math]::Round($cpuTempVal, 2) } else { $null }
-               ActivePowerPlanName    = $powerMetrics.ActivePowerPlanName
-               ActivePowerPlanGUID    = $powerMetrics.ActivePowerPlanGUID
-               SystemPowerStatus      = $powerMetrics.SystemPowerStatus
-               ActiveOverlayName      = $powerMetrics.ActiveOverlayName
-               ActiveOverlayGUID      = $powerMetrics.ActiveOverlayGUID
+                Timestamp                     = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                # CPUUsagePercentTime         = $cpuTimeVal # REMOVED
+                CPUUsagePercent               = $cpuUtilityVal # RENAMED from CPUUsagePercentUtility
+                CPUMaxClockSpeedMHz           = $cpuMaxClockSpeedMHz
+                RAMUsedMB                     = $ramUsedMBVal
+                RAMAvailableMB                = $ramAvailableMBVal
+                DiskIOTransferSec             = $diskIOVal
+                NetworkIOBytesSec             = $networkIOVal
+                BatteryPercentage             = $batteryVal
+                BatteryFullChargedCapacity_mWh = $batteryFullChargedCapacity_mWh
+                BatteryRemainingCapacity_mWh  = $batteryRemainingCapacity_mWh
+                BatteryDesignCapacity_mWh     = $batteryDesignCapacity_mWh
+                ScreenBrightness              = $brightnessVal
+               CPUTemperatureC               = if ($null -ne $cpuTempVal) { [math]::Round($cpuTempVal, 2) } else { $null }
+               ActivePowerPlanName           = $powerMetrics.ActivePowerPlanName
+               ActivePowerPlanGUID           = $powerMetrics.ActivePowerPlanGUID
+               SystemPowerStatus             = $powerMetrics.SystemPowerStatus
+               ActiveOverlayName             = $powerMetrics.ActiveOverlayName
+               ActiveOverlayGUID             = $powerMetrics.ActiveOverlayGUID
            }
            
            # Add GPU Engine metrics from the hashtable

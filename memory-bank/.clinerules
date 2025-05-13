@@ -1,9 +1,0 @@
-# .clinerules - Project Intelligence
-
-## Key Patterns and Preferences
-
-- All system logging must use WMI and CIM only; no external DLLs or libraries are permitted for Plogger.ps1.
-- CSV schema must remain stable and compatible with Reporter.ps1 and Reporter_for_Process.ps1.
-- Script/EXE path detection logic must be robust to support both .ps1 and compiled .exe execution.
-- HTML reports should use Chart.js and provide clear, actionable visualizations.
-- Update this file as new project-specific patterns, user preferences, or technical decisions are discovered.

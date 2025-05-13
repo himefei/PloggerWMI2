@@ -387,7 +387,7 @@ if ($statsTableRows.Count -gt 0) {
 }
 Write-Host "Overall Statistics Summary Calculation Complete."
 
-# --- Power Statistics Section (simplified for WMI-only logger) ---
+# --- Power Statistics Section (WMI battery capacity details included) ---
 $powerStatisticsSectionHtml = ""
 if ($data.Count -gt 0) {
     $lastRow = $data[-1]
@@ -395,10 +395,25 @@ if ($data.Count -gt 0) {
     $activePlan = $lastRow.ActivePowerPlanName
     $activeOverlay = $lastRow.ActiveOverlayName
     $batteryPercentage = $lastRow.BatteryPercentage
-    $batteryDesignCapacity = $lastRow.BatteryDesignCapacitymWh
-    $batteryFullChargedCapacity = $lastRow.BatteryFullChargedCapacitymWh
-    $batteryRemainingCapacity = $lastRow.BatteryRemainingCapacitymWh
-    $batteryDischargeRate = $lastRow.BatteryDischargeRateW
+
+    # WMI battery capacity columns
+    $batteryDesignCapacity = $null
+    $batteryFullChargedCapacity = $null
+    $batteryRemainingCapacity = $null
+    $batteryDischargeRate = $null
+
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryDesignCapacitymWh') {
+        $batteryDesignCapacity = $lastRow.BatteryDesignCapacitymWh
+    }
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryFullChargedCapacitymWh') {
+        $batteryFullChargedCapacity = $lastRow.BatteryFullChargedCapacitymWh
+    }
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryRemainingCapacitymWh') {
+        $batteryRemainingCapacity = $lastRow.BatteryRemainingCapacitymWh
+    }
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryDischargeRateW') {
+        $batteryDischargeRate = $lastRow.BatteryDischargeRateW
+    }
 
     $powerStatisticsSectionHtml = @"
     <div class="stats-section">
@@ -412,6 +427,9 @@ if ($data.Count -gt 0) {
             <li><strong>Battery Full Charged Capacity (mWh):</strong> $batteryFullChargedCapacity</li>
             <li><strong>Battery Remaining Capacity (mWh):</strong> $batteryRemainingCapacity</li>
             <li><strong>Battery Discharge Rate (W):</strong> $batteryDischargeRate</li>
+        </ul>
+        <ul>
+            <li><em>Battery capacity values are retrieved from WMI (BatteryFullChargedCapacity, BatteryRemainingCapacity, etc.).</em></li>
         </ul>
     </div>
 "@
