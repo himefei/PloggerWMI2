@@ -425,11 +425,61 @@ if ($statsTableRows.Count -gt 0) {
 Write-Host "Overall Statistics Summary Calculation Complete."
 
 # --- Power Statistics Section (WMI battery capacity details included) ---
+# --- Power Status Event Calculation ---
+$powerStatusEventMsg = ""
+if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains 'SystemPowerStatus') {
+    $powerStates = $data | Select-Object -ExpandProperty SystemPowerStatus
+    $timestamps = $data | Select-Object -ExpandProperty Timestamp
+    $totalRows = $powerStates.Count
+    $acStates = @('AC', 'Online', 'Plugged', 'PluggedIn', 'Plugged In', 'AC Power') # possible AC values
+    $isAC = { param($v) $acStates -contains ($v -replace '\s', '') -or $v -match 'AC|Online|Plugged' }
+    $pluggedCount = 0
+    $events = @()
+    $lastState = $null
+    $lastChangeIdx = 0
+    $firstState = $null
+    $lastEvent = $null
+
+    for ($i = 0; $i -lt $totalRows; $i++) {
+        $cur = $powerStates[$i]
+        if ($i -eq 0) { $firstState = $cur }
+        if ($lastState -ne $null -and $cur -ne $lastState) {
+            $events += @{ From = $lastState; To = $cur; At = $timestamps[$i] }
+            $lastChangeIdx = $i
+        }
+        if (&$isAC $cur) { $pluggedCount++ }
+        $lastState = $cur
+    }
+    if ($events.Count -gt 0) {
+        $lastEvent = $events[-1]
+    } else {
+        $lastEvent = $null
+    }
+    $pluggedPct = [math]::Round(($pluggedCount / [math]::Max($totalRows,1)) * 100, 1)
+    $finalState = $powerStates[-1]
+
+    if ($events.Count -eq 0) {
+        if (&$isAC $firstState) {
+            $powerStatusEventMsg = "The system is plugged in all the time through the logging process. (Plugged-in: $pluggedPct`%)"
+        } else {
+            $powerStatusEventMsg = "The system was on battery all the time through the logging process. (Plugged-in: $pluggedPct`%)"
+        }
+    } else {
+        $msg = "Initial: $firstState. "
+        foreach ($ev in $events) {
+            $msg += "[$($ev.At)]: $($ev.From) → $($ev.To). "
+        }
+        $msg += "Latest: $finalState. Plugged-in: $pluggedPct`% of time."
+        $powerStatusEventMsg = $msg
+    }
+} else {
+    $powerStatusEventMsg = "Power status data not available."
+}
+
 $powerStatisticsSectionHtml = ""
 if ($data.Count -gt 0) {
     $lastRow = $data[-1]
     $powerStatus = $lastRow.SystemPowerStatus
-    $activePlan = $lastRow.ActivePowerPlanName
     $activeOverlay = $lastRow.ActiveOverlayName
     $batteryPercentage = $lastRow.BatteryPercentage
 
@@ -469,7 +519,7 @@ if ($data.Count -gt 0) {
         <h2>Power Statistics</h2>
         <ul>
             <li><strong>Current Power Status:</strong> $powerStatus</li>
-            <li><strong>Active Power Plan:</strong> $activePlan</li>
+            <li><strong>Power Status Event:</strong> $powerStatusEventMsg</li>
             <li><strong>Active Overlay:</strong> $activeOverlay</li>
             <li><strong>Battery Percentage:</strong> $batteryPercentage</li>
             <li><strong>Battery Design Capacity (mWh):</strong> $batteryDesignCapacity</li>
