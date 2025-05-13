@@ -474,9 +474,9 @@ function Capture-ResourceUsage {
                     if ($bsdInstance -and $bsdInstance.DesignedCapacity) {
                         $batteryDesignCapacity_mWh_static = $bsdInstance.DesignedCapacity
                         Write-Verbose "DesignCapacity from ROOT\WMI\BatteryStaticData: $batteryDesignCapacity_mWh_static mWh"
-                        # If Win32_Battery didn't provide it, or if we prefer the ROOT\WMI one when available
-                        if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh_static -ne $null) {
-                             $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_static
+                        # Always prefer ROOT\WMI\BatteryStaticData if available and valid
+                        if ($batteryDesignCapacity_mWh_static -ne $null -and $batteryDesignCapacity_mWh_static -gt 0) {
+                            $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_static
                         }
                     }
 

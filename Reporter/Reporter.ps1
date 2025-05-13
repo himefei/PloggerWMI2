@@ -276,6 +276,74 @@ function Get-AllCoreClockStatistics {
     }
 }
 
+# Function to calculate average charge/discharge rates from battery data
+function Get-BatteryPowerRates {
+    param (
+        [Parameter(Mandatory = $true)]
+        [array]$Data
+    )
+
+    $totalChargeEnergyWh = 0.0
+    $totalDischargeEnergyWh = 0.0
+    $totalChargingDurationSeconds = 0.0
+    $totalDischargingDurationSeconds = 0.0
+    $previousTimestamp = $null
+    $previousCapacityMWh = $null
+    $previousPowerStatus = $null
+    $isDataSufficient = $false
+
+    $acStates = @('AC', 'Online', 'Plugged', 'PluggedIn', 'Plugged In', 'AC Power')
+    $isAC = { param($v) $acStates -contains ($v -replace '\s', '') -or $v -match 'AC|Online|Plugged' }
+
+    for ($i = 0; $i -lt $Data.Count; $i++) {
+        $row = $Data[$i]
+        if (-not ($row.PSObject.Properties.Name -contains 'Timestamp' -and $row.PSObject.Properties.Name -contains 'BatteryRemainingCapacity_mWh' -and $row.PSObject.Properties.Name -contains 'SystemPowerStatus')) {
+            continue
+        }
+        $curTimestamp = $null
+        $curCapacityMWh = $null
+        try { $curTimestamp = [datetime]$row.Timestamp } catch {}
+        try { $curCapacityMWh = [double]$row.BatteryRemainingCapacity_mWh } catch {}
+        $curPowerStatus = $row.SystemPowerStatus
+
+        if ($previousTimestamp -ne $null -and $previousCapacityMWh -ne $null -and $previousPowerStatus -ne $null -and $curTimestamp -ne $null -and $curCapacityMWh -ne $null) {
+            $deltaTimeSeconds = ($curTimestamp - $previousTimestamp).TotalSeconds
+            if ($deltaTimeSeconds -le 0) { 
+                $previousTimestamp = $curTimestamp
+                $previousCapacityMWh = $curCapacityMWh
+                $previousPowerStatus = $curPowerStatus
+                continue 
+            }
+            $capacityDeltaMWh = $curCapacityMWh - $previousCapacityMWh
+
+            if (&$isAC $curPowerStatus) {
+                $totalChargingDurationSeconds += $deltaTimeSeconds
+                if ($capacityDeltaMWh -gt 0) {
+                    $totalChargeEnergyWh += ($capacityDeltaMWh / 1000.0)
+                }
+                $isDataSufficient = $true
+            } else {
+                $totalDischargingDurationSeconds += $deltaTimeSeconds
+                if ($capacityDeltaMWh -lt 0) {
+                    $totalDischargeEnergyWh += ([math]::Abs($capacityDeltaMWh) / 1000.0)
+                }
+                $isDataSufficient = $true
+            }
+        }
+        $previousTimestamp = $curTimestamp
+        $previousCapacityMWh = $curCapacityMWh
+        $previousPowerStatus = $curPowerStatus
+    }
+
+    $averageChargeRateWh = if ($totalChargingDurationSeconds -gt 0) { [math]::Round($totalChargeEnergyWh / ($totalChargingDurationSeconds / 3600.0), 2) } else { "N/A" }
+    $averageDischargeRateWh = if ($totalDischargingDurationSeconds -gt 0) { [math]::Round($totalDischargeEnergyWh / ($totalDischargingDurationSeconds / 3600.0), 2) } else { "N/A" }
+
+    return @{
+        AverageChargeRateWh = $averageChargeRateWh
+        AverageDischargeRateWh = $averageDischargeRateWh
+        IsDataSufficient = $isDataSufficient
+    }
+}
 # --- Main Script ---
 
 # Prompt user to select the CSV file
@@ -316,6 +384,8 @@ if ($missingColumns) {
     Write-Error "The CSV file '$csvFilePath' is missing required columns: $($missingColumns -join ', ')"
     exit
 }
+# Calculate battery charge/discharge rates for Power Statistics
+$batteryRateStats = Get-BatteryPowerRates -Data $data
 
 # Get Chart.js reference
 function Get-ChartJsReference {
@@ -514,6 +584,36 @@ if ($data.Count -gt 0) {
         }
     }
 
+    # Prepare battery rate and runtime display values
+    $avgChargeRateDisplay = if ($batteryRateStats.IsDataSufficient) { "$($batteryRateStats.AverageChargeRateWh) Wh" } else { "N/A" }
+    $avgDischargeRateDisplay = if ($batteryRateStats.IsDataSufficient) { "$($batteryRateStats.AverageDischargeRateWh) Wh" } else { "N/A" }
+    $estimatedRuntimeDisplay = "N/A"
+    $remainingCapacityWh = $null
+    if ($lastRow.PSObject.Properties.Name -contains 'BatteryRemainingCapacity_mWh') {
+        $val = $lastRow.BatteryRemainingCapacity_mWh
+        if ($null -ne $val -and $val -ne "" -and $val -ne "N/A" -and $val -ne "Error") {
+            try { $remainingCapacityWh = [double]$val / 1000.0 } catch {}
+        }
+    }
+    if ($powerStatus -and $batteryRateStats.IsDataSufficient -and $remainingCapacityWh -ne $null -and $batteryRateStats.AverageDischargeRateWh -ne "N/A" -and $batteryRateStats.AverageDischargeRateWh -gt 0) {
+        if (&$isAC $powerStatus) {
+            $estimatedRuntimeDisplay = "N/A (Plugged In)"
+        } else {
+            $rawRuntimeHours = $remainingCapacityWh / $batteryRateStats.AverageDischargeRateWh
+            if ($rawRuntimeHours -gt 100) {
+                $estimatedRuntimeDisplay = ">100 hours"
+            } elseif ($rawRuntimeHours -gt 0) {
+                $hours = [math]::Floor($rawRuntimeHours)
+                $minutes = [math]::Round(($rawRuntimeHours - $hours) * 60)
+                if ($hours -eq 0 -and $minutes -eq 0) {
+                    $estimatedRuntimeDisplay = "<1 minute"
+                } else {
+                    $estimatedRuntimeDisplay = "$hours hours $minutes minutes"
+                }
+            }
+        }
+    }
+
     $powerStatisticsSectionHtml = @"
     <div class="stats-section">
         <h2>Power Statistics</h2>
@@ -526,6 +626,9 @@ if ($data.Count -gt 0) {
             <li><strong>Battery Full Charged Capacity (mWh):</strong> $batteryFullChargedCapacity</li>
             <li><strong>Battery Remaining Capacity (mWh):</strong> $batteryRemainingCapacity</li>
             <li><strong>Battery Discharge Rate (W):</strong> $batteryDischargeRate</li>
+            <li><strong>Average Charge Rate:</strong> $avgChargeRateDisplay</li>
+            <li><strong>Average Discharge Rate:</strong> $avgDischargeRateDisplay</li>
+            <li><strong>Estimated Battery Runtime:</strong> $estimatedRuntimeDisplay</li>
         </ul>
         <ul>
             <li><em>Battery capacity values are retrieved from WMI (BatteryFullChargedCapacity, BatteryRemainingCapacity, etc.).</em></li>
