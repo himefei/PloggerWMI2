@@ -165,8 +165,14 @@ function Get-PowerStatusMetrics {
        }
    }
    catch {
-       Write-Warning "Error reading Power Mode Overlay from registry: $($_.Exception.Message)"
-       # $activeOverlayGuid and $overlayFriendlyName remain "Error"
+       if ($_.CategoryInfo.Reason -eq 'PropertyNotFoundException') {
+           Write-Warning "The Power Mode Overlay property ('$overlayValueName') was not found in the registry path '$registryPath'. This can happen on some systems and is not critical. Plogger will continue, using default 'Error' values for this specific information."
+       } else {
+           # Log the full error for unexpected issues
+           Write-Warning "An unexpected error occurred while trying to read Power Mode Overlay from registry (Path: '$registryPath', Property: '$overlayValueName'): $($_.Exception.ToString()). Plogger will continue, using default 'Error' values for this information."
+       }
+       # $activeOverlayGuid and $overlayFriendlyName were initialized to "Error"
+       # and are not changed here, effectively using them as the fallback.
    }
 
    return [PSCustomObject]@{
