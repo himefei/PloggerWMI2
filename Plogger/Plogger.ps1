@@ -529,17 +529,17 @@ function Capture-ResourceUsage {
                 Write-Warning "Failed to get Brightness: $($_.Exception.Message)" 
             }
 
-            # --- NEW: Attempt to get CPU Temperature using WMI ---
+            # --- NEW: Capture raw CPU Temperature data without conversion ---
             try {
                 $cpuTempVal = $null
                 
-                # Try MSAcpi_ThermalZoneTemperature from root/wmi namespace
+                # Try MSAcpi_ThermalZoneTemperature from root/wmi namespace - capture raw value
                 try {
                     $thermalZone = Get-CimInstance -Namespace "root/wmi" -ClassName "MSAcpi_ThermalZoneTemperature" -ErrorAction Stop
                     if ($thermalZone -and $thermalZone.CurrentTemperature) {
-                        # Convert from tenths of Kelvin to Celsius
-                        $cpuTempVal = [math]::Round(($thermalZone.CurrentTemperature / 10) - 273.15, 2)
-                        Write-Verbose "CPU Temperature from MSAcpi_ThermalZoneTemperature: $cpuTempVal °C"
+                        # Store raw value (tenths of Kelvin) for processing in Reporter
+                        $cpuTempVal = $thermalZone.CurrentTemperature
+                        Write-Verbose "Raw CPU Temperature from MSAcpi_ThermalZoneTemperature: $cpuTempVal (tenths of Kelvin)"
                     }
                 } catch {
                     Write-Verbose "Failed to get CPU Temperature via MSAcpi_ThermalZoneTemperature: $($_.Exception.Message)"
@@ -550,8 +550,9 @@ function Capture-ResourceUsage {
                     try {
                         $thermalInfo = Get-CimInstance -Namespace "root/cimv2" -ClassName "Win32_PerfFormattedData_Counters_ThermalZoneInformation" -ErrorAction Stop
                         if ($thermalInfo -and $thermalInfo.Temperature) {
-                            $cpuTempVal = $thermalInfo.Temperature
-                            Write-Verbose "CPU Temperature from Win32_PerfFormattedData_Counters_ThermalZoneInformation: $cpuTempVal °C"
+                            # This counter provides temperature in Celsius, prefix with marker for Reporter processing
+                            $cpuTempVal = "CELSIUS:$($thermalInfo.Temperature)"
+                            Write-Verbose "CPU Temperature from Win32_PerfFormattedData_Counters_ThermalZoneInformation: $($thermalInfo.Temperature) °C"
                         }
                     } catch {
                         Write-Verbose "Failed to get CPU Temperature via Win32_PerfFormattedData_Counters_ThermalZoneInformation: $($_.Exception.Message)"
@@ -570,7 +571,7 @@ function Capture-ResourceUsage {
                 }
                 $cpuTempVal = $null
             }
-            # --- END NEW CPU Temperature ---
+            # --- END NEW Raw CPU Temperature Capture ---
 
             # --- NEW: Get GPU Engine Utilization using Performance Counters ---
             $gpuEngineUsage = @{} # Hashtable to store results
@@ -633,7 +634,7 @@ function Capture-ResourceUsage {
                 BatteryRemainingCapacity_mWh  = $batteryRemainingCapacity_mWh
                 BatteryDesignCapacity_mWh     = $batteryDesignCapacity_mWh
                 ScreenBrightness              = $brightnessVal
-               CPUTemperatureC               = if ($null -ne $cpuTempVal) { [math]::Round($cpuTempVal, 2) } else { $null }
+               CPUTemperatureRaw             = $cpuTempVal
                ActivePowerPlanName           = $powerMetrics.ActivePowerPlanName
                ActivePowerPlanGUID           = $powerMetrics.ActivePowerPlanGUID
                SystemPowerStatus             = $powerMetrics.SystemPowerStatus

@@ -19,6 +19,49 @@ function Select-CsvFile {
     }
 }
 
+# Function to convert raw temperature data to Celsius
+function Convert-RawTemperatureToCelsius {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$RawTempColumnName
+    )
+    
+    $convertedTemps = @()
+    
+    foreach ($row in $Data) {
+        $rawValue = $row.$RawTempColumnName
+        $convertedTemp = $null
+        
+        if ($null -ne $rawValue -and $rawValue -ne "" -and $rawValue -ne "N/A" -and $rawValue -ne "Error") {
+            if ($rawValue -is [string] -and $rawValue.StartsWith("CELSIUS:")) {
+                # Already in Celsius from Win32_PerfFormattedData_Counters_ThermalZoneInformation
+                $tempStr = $rawValue.Substring(8) # Remove "CELSIUS:" prefix
+                try {
+                    $convertedTemp = [double]$tempStr
+                } catch {
+                    $convertedTemp = $null
+                }
+            } else {
+                # Raw value in tenths of Kelvin from MSAcpi_ThermalZoneTemperature
+                try {
+                    $rawNumeric = [double]$rawValue
+                    # Convert from tenths of Kelvin to Celsius with higher precision
+                    $convertedTemp = [math]::Round(($rawNumeric / 10.0) - 273.15, 3)
+                } catch {
+                    $convertedTemp = $null
+                }
+            }
+        }
+        
+        $convertedTemps += $convertedTemp
+    }
+    
+    return $convertedTemps
+}
+
 # Function to calculate statistics for a given metric
 function Get-MetricStatistics {
     param (
@@ -413,7 +456,6 @@ $metricsToSummarize = @(
     @{ Name = 'RAMUsedMB'; Label = 'RAM Used'; Unit = 'MB' }
     @{ Name = 'DiskIOTransferSec'; Label = 'Disk I/O'; Unit = 'Transfers/sec' }
     @{ Name = 'NetworkIOBytesSec'; Label = 'Network I/O'; Unit = 'Bytes/sec' }
-    @{ Name = 'CPUTemperatureC'; Label = 'CPU Temperature'; Unit = '°C' }
     @{ Name = 'CPUPowerW'; Label = 'CPU Power'; Unit = 'W' }
     @{ Name = 'CPUPlatformPowerW'; Label = 'CPU Platform Power'; Unit = 'W' }
 )
@@ -426,6 +468,32 @@ foreach ($metricInfo in $metricsToSummarize) {
         } else {
             $statsTableRows.Add("<tr><td>$($metricInfo.Label)</td><td colspan='4'>N/A (column present but no valid data)</td></tr>")
         }
+    }
+}
+
+# Handle CPU Temperature separately using raw data conversion
+if ($data[0].PSObject.Properties.Name -contains 'CPUTemperatureRaw') {
+    $convertedTemps = Convert-RawTemperatureToCelsius -Data $data -RawTempColumnName 'CPUTemperatureRaw'
+    
+    # Create a temporary data structure for temperature statistics
+    $tempData = @()
+    for ($i = 0; $i -lt $data.Count; $i++) {
+        $tempData += [PSCustomObject]@{ CPUTemperatureC = $convertedTemps[$i] }
+    }
+    
+    $tempStats = Get-MetricStatistics -Data $tempData -PropertyName 'CPUTemperatureC' -Label 'CPU Temperature' -Unit '°C'
+    if ($tempStats.Available) {
+        $statsTableRows.Add("<tr><td>$($tempStats.Label)</td><td>$($tempStats.Average) $($tempStats.Unit)</td><td>$($tempStats.Median) $($tempStats.Unit)</td><td>$($tempStats.Minimum) $($tempStats.Unit)</td><td>$($tempStats.Maximum) $($tempStats.Unit)</td></tr>")
+    } else {
+        $statsTableRows.Add("<tr><td>CPU Temperature</td><td colspan='4'>N/A (raw data present but conversion failed)</td></tr>")
+    }
+} elseif ($data[0].PSObject.Properties.Name -contains 'CPUTemperatureC') {
+    # Fallback for legacy data with pre-converted temperatures
+    $stats = Get-MetricStatistics -Data $data -PropertyName 'CPUTemperatureC' -Label 'CPU Temperature' -Unit '°C'
+    if ($stats.Available) {
+        $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Median) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
+    } else {
+        $statsTableRows.Add("<tr><td>CPU Temperature</td><td colspan='4'>N/A (column present but no valid data)</td></tr>")
     }
 }
 
@@ -738,6 +806,26 @@ $reportContent = @"
         const diskIO = [];
         const networkIO = [];
         const cpuTemp = [];
+        
+        // Function to convert raw temperature to Celsius for charts
+        function convertRawTempToCelsius(rawValue) {
+            if (rawValue === undefined || rawValue === null || rawValue === "" || rawValue === "N/A" || rawValue === "Error") {
+                return null;
+            }
+            
+            if (typeof rawValue === 'string' && rawValue.startsWith('CELSIUS:')) {
+                // Already in Celsius from Win32_PerfFormattedData_Counters_ThermalZoneInformation
+                const tempStr = rawValue.substring(8); // Remove "CELSIUS:" prefix
+                const parsed = parseFloat(tempStr);
+                return isNaN(parsed) ? null : Math.round(parsed * 1000) / 1000; // 3 decimal places
+            } else {
+                // Raw value in tenths of Kelvin from MSAcpi_ThermalZoneTemperature
+                const parsed = parseFloat(rawValue);
+                if (isNaN(parsed)) return null;
+                // Convert from tenths of Kelvin to Celsius with higher precision
+                return Math.round(((parsed / 10.0) - 273.15) * 1000) / 1000; // 3 decimal places
+            }
+        }
         const screenBrightness = [];
         const batteryPercentage = [];
         const gpuEngines = {};
@@ -772,7 +860,15 @@ $reportContent = @"
             ramAvailable.push(parseNumeric(row.RAMAvailableMB));
             diskIO.push(parseNumeric(row.DiskIOTransferSec));
             networkIO.push(parseNumeric(row.NetworkIOBytesSec));
-            cpuTemp.push(parseNumeric(row.CPUTemperatureC));
+            // Handle both raw temperature data and legacy converted data
+            if (row.hasOwnProperty('CPUTemperatureRaw')) {
+                cpuTemp.push(convertRawTempToCelsius(row.CPUTemperatureRaw));
+            } else if (row.hasOwnProperty('CPUTemperatureC')) {
+                // Fallback for legacy data with pre-converted temperatures
+                cpuTemp.push(parseNumeric(row.CPUTemperatureC));
+            } else {
+                cpuTemp.push(null);
+            }
             screenBrightness.push(parseNumeric(row.ScreenBrightness));
             batteryPercentage.push(parseNumeric(row.BatteryPercentage));
             gpuEngineNames.forEach(engineName => {
