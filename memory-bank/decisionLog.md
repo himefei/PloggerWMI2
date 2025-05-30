@@ -131,3 +131,40 @@ PloggerWMI2/
 - **Positive**: Simplified structure, easier testing, consolidated distribution
 - **Considerations**: All file path references within scripts may need verification
 - **Benefits**: Single-folder deployment model for easier customer distribution
+[2025-05-30 23:53:48] - License Change from MIT to Mozilla Public License 2.0
+
+## Decision
+
+Changed project license from MIT to Mozilla Public License (MPL) 2.0 across all components.
+
+## Rationale 
+
+User requested MPL 2.0 license implementation to replace the existing MIT license in the project. MPL 2.0 provides:
+- Copyleft protection for modifications to the source code
+- Compatibility with proprietary software integration
+- File-level copyleft (less restrictive than GPL)
+- Patent protection clauses
+
+## Implementation Details
+
+**License File Creation:**
+- Created root-level LICENSE file with complete MPL 2.0 text
+- Standard Mozilla Public License Version 2.0 with all sections and exhibits
+
+**Source Code Updates:**
+- Updated Plogger.ps1 header comment from MIT license text to MPL 2.0 notice
+- Replaced 17-line MIT license block with concise MPL 2.0 reference
+- Maintained copyright attribution to Lifei Yu (2025)
+- Added standard MPL notice: "This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0"
+
+**Compliance:**
+- MPL 2.0 notice format follows Mozilla Foundation guidelines
+- Reference to http://mozilla.org/MPL/2.0/ for full license text
+- Consistent licensing across project components
+
+## Impact
+
+- **Legal**: Stronger copyleft protection while maintaining commercial compatibility
+- **Distribution**: Clear licensing terms for open-source distribution
+- **Development**: File-level copyleft ensures modifications remain open source
+- **Integration**: Compatible with proprietary software integration scenarios

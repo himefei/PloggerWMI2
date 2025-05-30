@@ -127,3 +127,33 @@ This file tracks the project's progress using a task list format.
 - Easier testing with all components in single location
 - Streamlined distribution and customer deployment
 - Reduced complexity while maintaining all functionality
+[2025-05-30 23:50:55] - GitHub README Creation Completed
+## Completed Tasks
+
+* **Comprehensive README.md**: Created detailed GitHub README based on ProjectBrief.md and Memory Bank documentation
+* **Feature Documentation**: Documented all key capabilities including real-time CPU monitoring, drag & drop charts, temperature monitoring
+* **Architecture Overview**: Explained consolidated single-folder structure and component responsibilities
+* **Usage Instructions**: Provided clear quick start guide and usage examples
+* **Technical Specifications**: Included performance impact details, compatibility requirements, and data output formats
+* **Project Context**: Integrated project goals, features, and development patterns from Memory Bank
+
+## README Features Included
+- Project overview with lightweight performance monitoring focus
+- Complete feature list with interactive visualizations
+- Architecture documentation reflecting consolidated Plogger/ structure
+- Quick start guide for immediate usage
+- Advanced configuration and technical specifications
+- Development context and design patterns
+[2025-05-30 23:53:34] - License Implementation Completed
+## Completed Tasks
+
+* **Mozilla Public License 2.0**: Created LICENSE file with complete MPL 2.0 text
+* **Plogger.ps1 License Header Update**: Replaced MIT license header with MPL 2.0 license notice
+* **License Compliance**: Updated copyright header to reference Mozilla Public License v. 2.0 with standard MPL notice format
+* **Documentation Consistency**: License change aligns with project's open-source distribution goals
+
+## License Changes Applied
+- Removed previous MIT license text (lines 5-21) from Plogger.ps1 header
+- Replaced with standard MPL 2.0 notice referencing http://mozilla.org/MPL/2.0/
+- Maintained copyright attribution to Lifei Yu (2025)
+- Added complete MPL 2.0 license text in root LICENSE file
