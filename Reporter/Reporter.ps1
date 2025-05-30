@@ -963,33 +963,33 @@ $reportContent = @"
         </div>
     </div>
 
+    <div class="chart-row">
         <div class="chart-half">
             <div class="chart-container">
                 <div class="chart-title">Network I/O (Bytes/sec)</div>
                 <canvas id="networkChart"></canvas>
             </div>
         </div>
-    </div>
-
-    <div class="chart-row">
         <div class="chart-half">
             <div class="chart-container">
                 <div class="chart-title">CPU Temperature (C)</div>
                 <canvas id="tempChart"></canvas>
             </div>
         </div>
+    </div>
+
+    <div class="chart-row">
         <div class="chart-half">
             <div class="chart-container">
                 <div class="chart-title">Screen Brightness & Battery Percentage (%)</div>
                 <canvas id="brightnessChart"></canvas>
             </div>
         </div>
-    </div>
-
-    <div class="chart-row">
-        <div class="chart-container" style="width: 90%; height: 500px;">
-            <div class="chart-title">GPU Engine Utilization (%)</div>
-            <canvas id="gpuEngineChart"></canvas>
+        <div class="chart-half">
+            <div class="chart-container">
+                <div class="chart-title">GPU Engine Utilization (%)</div>
+                <canvas id="gpuEngineChart"></canvas>
+            </div>
         </div>
     </div>
 

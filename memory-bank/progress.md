@@ -84,3 +84,8 @@ This file tracks the project's progress using a task list format.
 - Chart now only shows RAM Used as a single line for clearer visualization
 - Updated JavaScript data processing to remove ramAvailable variable and processing
 - Changed from createMultiChart to createChart for RAM display
+[2025-05-30 23:07:26] - Standardized chart layout to half-width format
+- Moved GPU Engine Utilization chart from full-width to half-width layout for consistency
+- Fixed HTML structure by properly organizing all charts in chart-row/chart-half containers
+- Established system pattern for all future charts to use consistent half-width layout
+- Updated memory bank with chart layout template for future reference
