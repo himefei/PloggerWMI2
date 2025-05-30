@@ -79,3 +79,8 @@ This file tracks the project's progress using a task list format.
 - Added CPURealTimeClockSpeedMHz to CSV output and statistics summary
 - Created new CPU Real-Time Clock Speed line chart in HTML report positioned next to CPU Usage chart
 - Updated chart layout to accommodate new chart while maintaining responsive design
+[2025-05-30 22:56:25] - Simplified RAM Usage chart by removing RAM Available
+- Removed RAM Available line from "RAM Usage (MB)" chart to reduce confusion
+- Chart now only shows RAM Used as a single line for clearer visualization
+- Updated JavaScript data processing to remove ramAvailable variable and processing
+- Changed from createMultiChart to createChart for RAM display

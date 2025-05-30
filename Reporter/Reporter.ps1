@@ -1000,7 +1000,6 @@ $reportContent = @"
         const cpuUsage = [];
         const cpuClockSpeed = [];
         const ramUsed = [];
-        const ramAvailable = [];
         const diskIO = [];
         const networkIO = [];
         const cpuTemp = [];
@@ -1056,7 +1055,6 @@ $reportContent = @"
             cpuUsage.push(parseNumeric(row.CPUUsagePercent));
             cpuClockSpeed.push(parseNumeric(row.CPURealTimeClockSpeedMHz));
             ramUsed.push(parseNumeric(row.RAMUsedMB));
-            ramAvailable.push(parseNumeric(row.RAMAvailableMB));
             diskIO.push(parseNumeric(row.DiskIOTransferSec));
             networkIO.push(parseNumeric(row.NetworkIOBytesSec));
             // Handle both raw temperature data and legacy converted data
@@ -1150,10 +1148,7 @@ $reportContent = @"
         createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100);
         createChart('cpuClockChart', 'CPU Real-Time Clock Speed', cpuClockSpeed, 'rgb(255, 159, 64)', 'Clock Speed (MHz)');
 
-        createMultiChart('ramChart', [
-            { label: 'RAM Used', data: ramUsed, borderColor: 'rgb(54, 162, 235)', backgroundColor: 'rgba(54, 162, 235, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },
-            { label: 'RAM Available', data: ramAvailable, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
-        ], 'Memory (MB)');
+        createChart('ramChart', 'RAM Used', ramUsed, 'rgb(54, 162, 235)', 'Memory (MB)');
 
         createChart('diskChart', 'Disk Transfers/sec', diskIO, 'rgb(255, 159, 64)', 'Transfers/sec');
         createChart('networkChart', 'Network Bytes/sec', networkIO, 'rgb(153, 102, 255)', 'Bytes/sec');
