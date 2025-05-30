@@ -75,10 +75,43 @@ Write-Host "Using $maxThreads threads for processing"
 Write-Host "Importing data..."
 $data = Import-Csv -Path $csvPath -ErrorAction Stop
 
-# Validate columns
-$req = 'Timestamp','ProcessName','CPUPercent','RAM_MB','IOReadBytesPerSec','IOWriteBytesPerSec','GPUDedicatedMemoryMB','GPUSharedMemoryMB'
-$missing = $req | Where-Object { -not $data[0].PSObject.Properties.Name.Contains($_) }
-if ($missing) { Write-Error "Missing columns: $($missing -join ', ')"; exit }
+# Validate columns - handle both old and new format
+$reqOld = 'Timestamp','ProcessName','CPUPercent','RAM_MB','IOReadBytesPerSec','IOWriteBytesPerSec','GPUDedicatedMemoryMB','GPUSharedMemoryMB'
+$reqNew = 'Timestamp','ProcessName','CPUPercentRaw','LogicalCoreCount','RAM_MB','IOReadBytesPerSec','IOWriteBytesPerSec','GPUDedicatedMemoryMB','GPUSharedMemoryMB'
+
+$hasOldFormat = $reqOld | ForEach-Object { $data[0].PSObject.Properties.Name.Contains($_) } | Where-Object { $_ -eq $false } | Measure-Object | Select-Object -ExpandProperty Count
+$hasNewFormat = $reqNew | ForEach-Object { $data[0].PSObject.Properties.Name.Contains($_) } | Where-Object { $_ -eq $false } | Measure-Object | Select-Object -ExpandProperty Count
+
+if ($hasOldFormat -eq 0) {
+    Write-Host "Processing legacy process data format..."
+    $useNewFormat = $false
+} elseif ($hasNewFormat -eq 0) {
+    Write-Host "Processing optimized process data format..."
+    $useNewFormat = $true
+    
+    # Convert raw CPU data to calculated percentages
+    Write-Host "Converting raw CPU data to percentages..."
+    $data = $data | ForEach-Object {
+        if ($_.CPUPercentRaw -and $_.LogicalCoreCount) {
+            try {
+                $rawCPU = [double]$_.CPUPercentRaw
+                $coreCount = [double]$_.LogicalCoreCount
+                if ($coreCount -gt 0) {
+                    $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($rawCPU / $coreCount, 2)) -Force
+                } else {
+                    $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($rawCPU, 2)) -Force
+                }
+            } catch {
+                $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value 0 -Force
+            }
+        } else {
+            $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value 0 -Force
+        }
+        $_
+    }
+} else {
+    Write-Error "CSV file does not match expected format. Missing columns from both old and new formats."; exit
+}
 
 Write-Host "Data loaded. Processing in parallel..."
 

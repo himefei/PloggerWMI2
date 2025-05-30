@@ -62,6 +62,136 @@ function Convert-RawTemperatureToCelsius {
     return $convertedTemps
 }
 
+# Function to process raw GPU Engine data
+function Process-GPUEngineRawData {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data
+    )
+    
+    $processedData = @()
+    
+    foreach ($row in $Data) {
+        $rawGPUData = $row.GPUEngineRawData
+        $processedRow = [PSCustomObject]@{}
+        
+        # Copy all existing properties
+        $row.PSObject.Properties | ForEach-Object {
+            if ($_.Name -ne 'GPUEngineRawData') {
+                $processedRow | Add-Member -MemberType NoteProperty -Name $_.Name -Value $_.Value
+            }
+        }
+        
+        if ($null -ne $rawGPUData -and $rawGPUData -ne "" -and $rawGPUData -ne "N/A") {
+            try {
+                $engineCounters = $rawGPUData | ConvertFrom-Json
+                $gpuEngineUsage = @{}
+                
+                $engineDataRaw = $engineCounters | ForEach-Object {
+                    # Extract Engine Name and LUID
+                    $engineName = "Unknown"
+                    if ($_.InstanceName -match 'engtype_([a-zA-Z0-9]+)') {
+                        $engineName = $matches[1]
+                    }
+                    elseif ($_.InstanceName -match 'luid_\w+_phys_\d+_eng_\d+_type_([a-zA-Z0-9]+)') {
+                        $engineName = $matches[1]
+                    }
+                    elseif ($_.InstanceName -match 'eng_(\d+)') {
+                        $engineName = "Engine_$($matches[1])"
+                    }
+
+                    [PSCustomObject]@{
+                        Engine = $engineName
+                        UsagePercent = $_.CookedValue
+                    }
+                }
+                
+                # Group by Engine Type, Sum Percentages
+                $engineDataGrouped = $engineDataRaw | Group-Object Engine | ForEach-Object {
+                    $key = "GPUEngine_$($_.Name)_Percent"
+                    $value = [math]::Round(($_.Group.UsagePercent | Measure-Object -Sum).Sum, 2)
+                    $gpuEngineUsage[$key] = $value
+                }
+                
+                # Add GPU Engine metrics to the processed row
+                foreach ($key in $gpuEngineUsage.Keys) {
+                    $processedRow | Add-Member -MemberType NoteProperty -Name $key -Value $gpuEngineUsage[$key]
+                }
+            } catch {
+                Write-Verbose "Failed to process GPU Engine raw data for timestamp $($row.Timestamp): $($_.Exception.Message)"
+            }
+        }
+        
+        $processedData += $processedRow
+    }
+    
+    return $processedData
+}
+
+# Function to process raw network adapter data
+function Process-NetworkAdapterRawData {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data
+    )
+    
+    foreach ($row in $Data) {
+        $rawNetworkData = $row.NetworkAdaptersRawData
+        
+        if ($null -ne $rawNetworkData -and $rawNetworkData -ne "" -and $rawNetworkData -ne "N/A") {
+            try {
+                $adapters = $rawNetworkData | ConvertFrom-Json
+                
+                # Filter out virtual and inactive adapters, sum bytes across all physical adapters
+                $physicalAdapters = $adapters | Where-Object {
+                    $_.Name -notmatch 'isatap|Loopback|Teredo|Tunnel|Virtual' -and
+                    ($_.BytesTotalPersec -gt 0 -or $_.CurrentBandwidth -gt 0)
+                }
+                
+                if ($physicalAdapters) {
+                    # Sum the total bytes per second across all adapters
+                    $filteredNetworkIOVal = ($physicalAdapters | Measure-Object -Property BytesTotalPersec -Sum).Sum
+                    $row.NetworkIOBytesSec = $filteredNetworkIOVal
+                }
+            } catch {
+                Write-Verbose "Failed to process Network Adapter raw data for timestamp $($row.Timestamp): $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    return $Data
+}
+
+# Function to calculate enhanced battery percentage
+function Process-BatteryRawData {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data
+    )
+    
+    foreach ($row in $Data) {
+        $fullCapacity = $row.BatteryFullChargedCapacity_mWh
+        $remainingCapacity = $row.BatteryRemainingCapacity_mWh
+        
+        # Calculate percentage if both mWh values are valid
+        if ($null -ne $fullCapacity -and $fullCapacity -ne "" -and $fullCapacity -ne "N/A" -and $fullCapacity -ne "Error" -and
+            $null -ne $remainingCapacity -and $remainingCapacity -ne "" -and $remainingCapacity -ne "N/A" -and $remainingCapacity -ne "Error") {
+            try {
+                $fullCapacityNum = [double]$fullCapacity
+                $remainingCapacityNum = [double]$remainingCapacity
+                if ($fullCapacityNum -gt 0) {
+                    $calculatedPercentage = [Math]::Round(($remainingCapacityNum / $fullCapacityNum) * 100, 2)
+                    $row.BatteryPercentage = $calculatedPercentage
+                }
+            } catch {
+                Write-Verbose "Failed to calculate battery percentage for timestamp $($row.Timestamp): $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    return $Data
+}
+
 # Function to calculate statistics for a given metric
 function Get-MetricStatistics {
     param (
@@ -418,6 +548,22 @@ try {
 if ($null -eq $data -or $data.Count -eq 0) {
     Write-Error "CSV file '$csvFilePath' is empty or could not be parsed correctly."
     exit
+}
+
+# Process raw data if present
+Write-Host "Processing raw data for optimized calculations..."
+
+# Process Network Adapter raw data
+if ($data[0].PSObject.Properties.Name -contains 'NetworkAdaptersRawData') {
+    Write-Host "Processing Network Adapter raw data..."
+    $data = Process-NetworkAdapterRawData -Data $data
+}
+
+# Process Battery raw data
+if ($data[0].PSObject.Properties.Name -contains 'BatteryFullChargedCapacity_mWh' -and
+    $data[0].PSObject.Properties.Name -contains 'BatteryRemainingCapacity_mWh') {
+    Write-Host "Processing Battery raw data..."
+    $data = Process-BatteryRawData -Data $data
 }
 
 # Check for essential columns (use CPUUsagePercent, not CPUUsage)

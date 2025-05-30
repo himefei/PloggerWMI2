@@ -300,6 +300,7 @@ function Capture-ResourceUsage {
     $script:diskIOWarningLogged = $false   # Add flag for Disk IO warning
     $script:batteryWarningLogged = $false  # Add flag for battery warnings
     $script:cpuTempWarningLogged = $false  # Add flag for CPU temperature warnings
+    $script:gpuEngineDebugLogged = $false  # Add flag for GPU engine debug logging
     # --- END CHANGE ---
 
     try {
@@ -360,6 +361,7 @@ function Capture-ResourceUsage {
 
             try {
                 $ramAvailableMBVal = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
+                # Store raw values for Reporter calculation, but keep simple calc for immediate display
                 if ($null -ne $totalRamMB -and $null -ne $ramAvailableMBVal) {
                     $ramUsedMBVal = $totalRamMB - $ramAvailableMBVal
                 }
@@ -377,22 +379,19 @@ function Capture-ResourceUsage {
             } 
             # --- END CHANGE ---
             
-            # --- Network IO monitoring using WMI/CIM ---
+            # --- Network IO monitoring - capture raw data ---
+            $networkAdaptersRawData = $null
             try {
-                # Get network interface statistics using CIM
+                # Get network interface statistics using CIM - store raw for Reporter processing
                 $networkAdapters = Get-CimInstance -ClassName Win32_PerfFormattedData_Tcpip_NetworkInterface -ErrorAction Stop
                 
-                # Filter out virtual and inactive adapters, sum bytes in and out across all physical adapters
-                $physicalAdapters = $networkAdapters | Where-Object {
-                    $_.Name -notmatch 'isatap|Loopback|Teredo|Tunnel|Virtual' -and
-                    ($_.BytesTotalPersec -gt 0 -or $_.CurrentBandwidth -gt 0)
-                }
-                
-                if ($physicalAdapters) {
-                    # Sum the total bytes per second across all adapters
-                    $networkIOVal = ($physicalAdapters | Measure-Object -Property BytesTotalPersec -Sum).Sum
+                if ($networkAdapters) {
+                    # Store raw adapter data as JSON for processing in Reporter
+                    $networkAdaptersRawData = $networkAdapters | Select-Object Name, BytesTotalPersec, CurrentBandwidth | ConvertTo-Json -Compress
+                    Write-Verbose "Network adapters raw data captured: $($networkAdapters.Count) adapters"
+                    # For immediate logging, use simple sum without filtering for basic functionality
+                    $networkIOVal = ($networkAdapters | Measure-Object -Property BytesTotalPersec -Sum).Sum
                 } else {
-                    # If we have adapters but none are active, use 0
                     $networkIOVal = 0
                 }
             } catch {
@@ -402,7 +401,7 @@ function Capture-ResourceUsage {
                 
                 # Attempt fallback to direct WMI query
                 try {
-                    $netAdapters = Get-CimInstance -ClassName Win32_NetworkAdapter -ErrorAction Stop | 
+                    $netAdapters = Get-CimInstance -ClassName Win32_NetworkAdapter -ErrorAction Stop |
                                    Where-Object { $_.NetConnectionStatus -eq 2 } # Only connected adapters
                     
                     if ($netAdapters) {
@@ -412,7 +411,7 @@ function Capture-ResourceUsage {
                     Write-Warning "Fallback network detection also failed: $($_.Exception.Message)"
                 }
             }
-            # --- END Network IO ---
+            # --- END Network IO Raw Capture ---
             
             # --- Battery monitoring with multiple methods and WMI classes ---
             try {
@@ -486,12 +485,11 @@ function Capture-ResourceUsage {
                         }
                     }
 
-                    # Calculate percentage if both mWh values are valid from ROOT\WMI
+                    # Store raw mWh values for calculation in Reporter.ps1
                     if ($null -ne $batteryFullChargedCapacity_mWh -and $batteryFullChargedCapacity_mWh -gt 0 -and $null -ne $batteryRemainingCapacity_mWh) {
-                        $batteryVal = [Math]::Round(($batteryRemainingCapacity_mWh / $batteryFullChargedCapacity_mWh) * 100)
-                        # Log that we're using the fallback method for percentage calculation
+                        # Log that we have raw mWh values available for Reporter calculation
                         if (-not $script:batteryWarningLogged) {
-                            Write-Host "Battery percentage ($batteryVal%) calculated using ROOT\WMI mWh values."
+                            Write-Host "Battery mWh values captured for percentage calculation in Reporter."
                         }
                     }
                 } catch {
@@ -573,51 +571,70 @@ function Capture-ResourceUsage {
             }
             # --- END NEW Raw CPU Temperature Capture ---
 
-            # --- NEW: Get GPU Engine Utilization using Performance Counters ---
+            # --- NEW: Capture filtered GPU Engine data for useful metrics only ---
             $gpuEngineUsage = @{} # Hashtable to store results
             try {
                 $engineCounters = Get-Counter '\GPU Engine(*)\Utilization Percentage' -ErrorAction SilentlyContinue
                 if ($null -ne $engineCounters) {
-                    $engineDataRaw = $engineCounters.CounterSamples | ForEach-Object {
-                        # Extract Engine Name and LUID
-                        $engineName = "Unknown"
-                        if ($_.InstanceName -match 'engtype_([a-zA-Z0-9]+)') { 
-                            $engineName = $matches[1] 
-                        }
-                        elseif ($_.InstanceName -match 'luid_\w+_phys_\d+_eng_\d+_type_([a-zA-Z0-9]+)') { 
-                            $engineName = $matches[1] 
-                        }
-                        elseif ($_.InstanceName -match 'eng_(\d+)') { 
-                            $engineName = "Engine_$($matches[1])" 
-                        }
-
-                        $luid = "N/A"
-                        if ($_.InstanceName -match 'luid_([^_]+)') { 
-                            $luid = $matches[1] 
-                        }
-
-                        [PSCustomObject]@{ 
-                            GPU_LUID = $luid
-                            Engine = $engineName
-                            UsagePercent = $_.CookedValue 
-                        }
+                    # Debug: Log all available engine instance names (only once)
+                    if (-not $script:gpuEngineDebugLogged) {
+                        Write-Verbose "Available GPU Engine instances: $($engineCounters.CounterSamples.InstanceName -join ', ')"
+                        $script:gpuEngineDebugLogged = $true
                     }
                     
-                    # Group by Engine Type, Sum Percentages
-                    $engineDataGrouped = $engineDataRaw | Group-Object Engine | ForEach-Object {
-                        $key = "GPUEngine_$($_.Name)_Percent"
-                        $value = [math]::Round(($_.Group.UsagePercent | Measure-Object -Sum).Sum, 2)
-                        $gpuEngineUsage[$key] = $value
+                    # Filter for only useful engine types during capture
+                    $usefulEngines = @('3D', 'Copy', 'VideoDecode', 'VideoEncode', 'VideoProcessing')
+                    
+                    $filteredCounters = $engineCounters.CounterSamples | Where-Object {
+                        $instanceName = $_.InstanceName
+                        $isUseful = $false
+                        foreach ($engine in $usefulEngines) {
+                            # More flexible pattern matching to catch variations
+                            if ($instanceName -match "engtype_$engine" -or
+                                $instanceName -match "type_$engine" -or
+                                $instanceName -match "$engine" -or
+                                ($engine -eq 'VideoEncode' -and $instanceName -match 'VideoEnc') -or
+                                ($engine -eq 'VideoProcessing' -and $instanceName -match 'VideoProc')) {
+                                $isUseful = $true
+                                break
+                            }
+                        }
+                        $isUseful  # Remove the CookedValue > 0 filter to capture all relevant engines even if currently 0
                     }
                     
-                    Write-Verbose "GPU Engine Usage: $($gpuEngineUsage | Out-String)"
-                } else { 
-                    Write-Verbose "No '\GPU Engine(*)\Utilization Percentage' counters found." 
+                    if ($filteredCounters) {
+                        $engineDataRaw = $filteredCounters | ForEach-Object {
+                            # Extract Engine Name
+                            $engineName = "Unknown"
+                            if ($_.InstanceName -match 'engtype_([a-zA-Z0-9]+)') {
+                                $engineName = $matches[1]
+                            }
+                            elseif ($_.InstanceName -match 'luid_\w+_phys_\d+_eng_\d+_type_([a-zA-Z0-9]+)') {
+                                $engineName = $matches[1]
+                            }
+
+                            [PSCustomObject]@{
+                                Engine = $engineName
+                                UsagePercent = $_.CookedValue
+                            }
+                        }
+                        
+                        # Group by Engine Type, Sum Percentages - only for useful engines
+                        $engineDataGrouped = $engineDataRaw | Group-Object Engine | ForEach-Object {
+                            $key = "GPUEngine_$($_.Name)_Percent"
+                            $value = [math]::Round(($_.Group.UsagePercent | Measure-Object -Sum).Sum, 2)
+                            $gpuEngineUsage[$key] = $value
+                        }
+                        
+                        Write-Verbose "GPU Engine Usage (filtered): $($gpuEngineUsage.Keys -join ', ')"
+                    }
+                } else {
+                    Write-Verbose "No '\GPU Engine(*)\Utilization Percentage' counters found."
                 }
-            } catch { 
-                Write-Warning "Failed to get GPU Engine Utilization: $($_.Exception.Message)" 
+            } catch {
+                Write-Warning "Failed to get GPU Engine Utilization: $($_.Exception.Message)"
             }
-            # --- END NEW GPU Engine Utilization ---
+            # --- END NEW Filtered GPU Engine Capture ---
 
             # Create the base data object with metrics
             $currentData = [PSCustomObject]@{
@@ -625,6 +642,7 @@ function Capture-ResourceUsage {
                 # CPUUsagePercentTime         = $cpuTimeVal # REMOVED
                 CPUUsagePercent               = $cpuUtilityVal # RENAMED from CPUUsagePercentUtility
                 CPUMaxClockSpeedMHz           = $cpuMaxClockSpeedMHz
+                RAMTotalMB                    = $totalRamMB
                 RAMUsedMB                     = $ramUsedMBVal
                 RAMAvailableMB                = $ramAvailableMBVal
                 DiskIOTransferSec             = $diskIOVal
@@ -634,32 +652,31 @@ function Capture-ResourceUsage {
                 BatteryRemainingCapacity_mWh  = $batteryRemainingCapacity_mWh
                 BatteryDesignCapacity_mWh     = $batteryDesignCapacity_mWh
                 ScreenBrightness              = $brightnessVal
-               CPUTemperatureRaw             = $cpuTempVal
-               ActivePowerPlanName           = $powerMetrics.ActivePowerPlanName
-               ActivePowerPlanGUID           = $powerMetrics.ActivePowerPlanGUID
-               SystemPowerStatus             = $powerMetrics.SystemPowerStatus
-               ActiveOverlayName             = $powerMetrics.ActiveOverlayName
-               ActiveOverlayGUID             = $powerMetrics.ActiveOverlayGUID
-           }
-           
-           # Add GPU Engine metrics from the hashtable
+                CPUTemperatureRaw             = $cpuTempVal
+                NetworkAdaptersRawData        = $networkAdaptersRawData
+                ActivePowerPlanName           = $powerMetrics.ActivePowerPlanName
+                ActivePowerPlanGUID           = $powerMetrics.ActivePowerPlanGUID
+                SystemPowerStatus             = $powerMetrics.SystemPowerStatus
+                ActiveOverlayName             = $powerMetrics.ActiveOverlayName
+                ActiveOverlayGUID             = $powerMetrics.ActiveOverlayGUID
+            }
+            
+            # Add GPU Engine metrics from the hashtable (only useful ones with values)
             foreach ($key in $gpuEngineUsage.Keys) {
                 $currentData | Add-Member -MemberType NoteProperty -Name $key -Value $gpuEngineUsage[$key]
             }
             $data += $currentData
 
-            # --- MODIFIED: Log per-process metrics including GPU memory ---
-            # --- Get Logical Core Count for per-process CPU usage ---
-            $logicalCoreCount = [Environment]::ProcessorCount
-
+            # --- MODIFIED: Log per-process metrics with raw CPU data ---
             try {
-                # Get standard process metrics
+                # Get standard process metrics - store raw CPU data for Reporter processing
                 $procPerf = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfProc_Process -ErrorAction Stop |
                     Where-Object { $_.Name -notin @('Idle','_Total') } |
                     Select-Object @{Name='Timestamp';Expression={Get-Date -Format 'yyyy-MM-dd HH:mm:ss'}},
                                   @{Name='ProcessName';Expression={$_.Name}},
                                   @{Name='ProcessId';Expression={$_.IDProcess}},
-                                  @{Name='CPUPercent';Expression={ if ($logicalCoreCount -gt 0) { [math]::Round($_.PercentProcessorTime / $logicalCoreCount, 2) } else { [math]::Round($_.PercentProcessorTime, 2) } }},
+                                  @{Name='CPUPercentRaw';Expression={$_.PercentProcessorTime}},
+                                  @{Name='LogicalCoreCount';Expression={[Environment]::ProcessorCount}},
                                   @{Name='RAM_MB';Expression={[math]::Round($_.WorkingSet/1MB,2)}},
                                   @{Name='IOReadBytesPerSec';Expression={$_.IOReadBytesPersec}},
                                   @{Name='IOWriteBytesPerSec';Expression={$_.IOWriteBytesPersec}}
