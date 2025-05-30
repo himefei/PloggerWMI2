@@ -1,5 +1,13 @@
 # PloggerWMI2 - Windows Performance Monitor
 
+> **A Personal Journey in AI-Assisted Development**
+>
+> This project represents a fascinating exploration of what's possible when curiosity meets artificial intelligence. As someone without extensive programming background, I embarked on this journey to see how AI coding agents could transform a simple idea into a fully functional Windows performance monitoring tool.
+>
+> What started as an experiment has evolved into a comprehensive system that captures detailed PC metrics and generates beautiful interactive reports. This project stands as a testament to the remarkable capabilities of AI assistants in bridging the gap between vision and implementation.
+>
+> Special thanks to the AI agents that made this journey possible - proving that great software can emerge from collaboration between human creativity and artificial intelligence. 🤖✨
+
 A lightweight Windows performance monitoring tool that captures comprehensive system metrics using WMI/CIM and generates interactive visualized reports.
 
 ## 🎯 Project Overview
