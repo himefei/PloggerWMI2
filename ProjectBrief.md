@@ -1,0 +1,2 @@
+This project is to use WIM/CIM and all already availiable Windows modules to create a tool that can capture comprehensive Windows PC performance metrics and generate a visualized report.
+The goal is for this project is light-weight and able to capture accruate and comprehensive performance log from the customer's system.
