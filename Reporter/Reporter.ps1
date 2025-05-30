@@ -910,10 +910,13 @@ $reportContent = @"
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; color: #333; }
         .header { text-align: center; margin-bottom: 30px; color: #2c3e50; }
-        .chart-container { position: relative; height: 400px; width: 90%; margin: 30px auto; background-color: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); padding: 20px; }
-        .chart-title { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 15px; color: #2c3e50; }
-        .chart-row { display: flex; flex-wrap: wrap; justify-content: space-between; }
-        .chart-half { width: 48%; margin-bottom: 20px; }
+        .chart-container { position: relative; height: 400px; width: 90%; margin: 30px auto; background-color: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); padding: 20px; cursor: move; transition: all 0.3s ease; }
+        .chart-container:hover { box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15); transform: translateY(-2px); }
+        .chart-container.dragging { opacity: 0.7; transform: rotate(3deg); }
+        .chart-container.drag-over { border: 2px dashed #007bff; background-color: #f8f9fa; }
+        .chart-title { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 15px; color: #2c3e50; user-select: none; }
+        .chart-row { display: flex; flex-wrap: wrap; justify-content: space-between; min-height: 50px; }
+        .chart-half { width: 48%; margin-bottom: 20px; min-height: 450px; }
         @media (max-width: 1200px) { .chart-half { width: 100%; } }
         .stats-section { background-color: #fff; padding: 20px; margin: 30px auto; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 90%; }
         .summary-stats table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -922,6 +925,7 @@ $reportContent = @"
         .summary-stats tr:nth-child(even) { background-color: #f8f9fa; }
         .summary-stats td:nth-child(n+2) { text-align: right; }
         .stats-section h2 { text-align: center; color: #2c3e50; margin-top: 0; margin-bottom: 25px; }
+        .drag-instructions { background-color: #e3f2fd; border: 1px solid #1976d2; padding: 15px; margin: 20px auto; border-radius: 8px; text-align: center; width: 90%; color: #1976d2; font-weight: 500; }
     </style>
 </head>
 <body>
@@ -933,62 +937,68 @@ $reportContent = @"
     $overallStatsSummaryHtml
     $powerStatisticsSectionHtml
 
-    <div class="chart-row">
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">CPU Usage (%)</div>
-                <canvas id="cpuChart"></canvas>
-            </div>
-        </div>
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">CPU Real-Time Clock Speed (MHz)</div>
-                <canvas id="cpuClockChart"></canvas>
-            </div>
-        </div>
+    <div class="drag-instructions">
+        📊 <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
     </div>
 
-    <div class="chart-row">
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">RAM Usage (MB)</div>
-                <canvas id="ramChart"></canvas>
+    <div id="chartsGrid">
+        <div class="chart-row">
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="cpuChart">
+                    <div class="chart-title">CPU Usage (%)</div>
+                    <canvas id="cpuChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="cpuClockChart">
+                    <div class="chart-title">CPU Real-Time Clock Speed (MHz)</div>
+                    <canvas id="cpuClockChart"></canvas>
+                </div>
             </div>
         </div>
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">Disk I/O (Transfers/sec)</div>
-                <canvas id="diskChart"></canvas>
-            </div>
-        </div>
-    </div>
 
-    <div class="chart-row">
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">Network I/O (Bytes/sec)</div>
-                <canvas id="networkChart"></canvas>
+        <div class="chart-row">
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="ramChart">
+                    <div class="chart-title">RAM Usage (MB)</div>
+                    <canvas id="ramChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="diskChart">
+                    <div class="chart-title">Disk I/O (Transfers/sec)</div>
+                    <canvas id="diskChart"></canvas>
+                </div>
             </div>
         </div>
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">CPU Temperature (C)</div>
-                <canvas id="tempChart"></canvas>
-            </div>
-        </div>
-    </div>
 
-    <div class="chart-row">
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">Screen Brightness & Battery Percentage (%)</div>
-                <canvas id="brightnessChart"></canvas>
+        <div class="chart-row">
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="networkChart">
+                    <div class="chart-title">Network I/O (Bytes/sec)</div>
+                    <canvas id="networkChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="tempChart">
+                    <div class="chart-title">CPU Temperature (C)</div>
+                    <canvas id="tempChart"></canvas>
+                </div>
             </div>
         </div>
-        <div class="chart-half">
-            <div class="chart-container">
-                <div class="chart-title">GPU Engine Utilization (%)</div>
-                <canvas id="gpuEngineChart"></canvas>
+
+        <div class="chart-row">
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="brightnessChart">
+                    <div class="chart-title">Screen Brightness & Battery Percentage (%)</div>
+                    <canvas id="brightnessChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="gpuEngineChart">
+                    <div class="chart-title">GPU Engine Utilization (%)</div>
+                    <canvas id="gpuEngineChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -1145,20 +1155,53 @@ $reportContent = @"
             });
         }
 
-        createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100);
-        createChart('cpuClockChart', 'CPU Real-Time Clock Speed', cpuClockSpeed, 'rgb(255, 159, 64)', 'Clock Speed (MHz)');
 
-        createChart('ramChart', 'RAM Used', ramUsed, 'rgb(54, 162, 235)', 'Memory (MB)');
+        // Store chart instances and their configurations
+        const chartInstances = {};
+        const chartConfigs = {};
+        
+        // Store chart configurations after creation
+        function storeChartConfig(chartId, chart) {
+            chartInstances[chartId] = chart;
+            chartConfigs[chartId] = {
+                type: chart.config.type,
+                data: JSON.parse(JSON.stringify(chart.config.data)),
+                options: JSON.parse(JSON.stringify(chart.config.options))
+            };
+        }
 
-        createChart('diskChart', 'Disk Transfers/sec', diskIO, 'rgb(255, 159, 64)', 'Transfers/sec');
-        createChart('networkChart', 'Network Bytes/sec', networkIO, 'rgb(153, 102, 255)', 'Bytes/sec');
-        createChart('tempChart', 'CPU Temperature', cpuTemp, 'rgb(255, 99, 132)', 'Temperature (°C)');
-        createMultiChart('brightnessChart', [
+        // Recreate chart in a new canvas
+        function recreateChart(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || !chartConfigs[canvasId]) return;
+            
+            // Destroy existing chart if it exists
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].destroy();
+            }
+            
+            // Create new chart with stored config
+            const ctx = canvas.getContext('2d');
+            const newChart = new Chart(ctx, chartConfigs[canvasId]);
+            chartInstances[canvasId] = newChart;
+            return newChart;
+        }
+
+        // Store all created charts
+        storeChartConfig('cpuChart', createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100));
+        storeChartConfig('cpuClockChart', createChart('cpuClockChart', 'CPU Real-Time Clock Speed', cpuClockSpeed, 'rgb(255, 159, 64)', 'Clock Speed (MHz)'));
+        storeChartConfig('ramChart', createChart('ramChart', 'RAM Used', ramUsed, 'rgb(54, 162, 235)', 'Memory (MB)'));
+        storeChartConfig('diskChart', createChart('diskChart', 'Disk Transfers/sec', diskIO, 'rgb(255, 159, 64)', 'Transfers/sec'));
+        storeChartConfig('networkChart', createChart('networkChart', 'Network Bytes/sec', networkIO, 'rgb(153, 102, 255)', 'Bytes/sec'));
+        storeChartConfig('tempChart', createChart('tempChart', 'CPU Temperature', cpuTemp, 'rgb(255, 99, 132)', 'Temperature (°C)'));
+        
+        const brightnessChart = createMultiChart('brightnessChart', [
             { label: 'Screen Brightness', data: screenBrightness, borderColor: 'rgb(255, 206, 86)', backgroundColor: 'rgba(255, 206, 86, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },
             { label: 'Battery', data: batteryPercentage, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
         ], 'Percentage (%)', 0, 100);
+        storeChartConfig('brightnessChart', brightnessChart);
 
-        const ctxGpuEngine = document.getElementById('gpuEngineChart').getContext('2d');
+        // Handle GPU Engine chart
         if (gpuEngineNames.length > 0) {
             const engineDatasets = [];
             const engineColors = [
@@ -1180,7 +1223,8 @@ $reportContent = @"
                     pointHitRadius: 10
                 });
             });
-            createMultiChart('gpuEngineChart', engineDatasets, 'Utilization (%)', 0, 100);
+            const gpuChart = createMultiChart('gpuEngineChart', engineDatasets, 'Utilization (%)', 0, 100);
+            storeChartConfig('gpuEngineChart', gpuChart);
         } else {
             const gpuEngineCanvas = document.getElementById('gpuEngineChart');
             if (gpuEngineCanvas) {
@@ -1191,6 +1235,79 @@ $reportContent = @"
                 ctx.fillText('No GPU Engine Utilization data found in CSV', gpuEngineCanvas.width / 2, gpuEngineCanvas.height / 2);
             }
         }
+
+        // Drag and Drop functionality
+        let draggedElement = null;
+        
+        function attachDragListeners(container) {
+            container.addEventListener('dragstart', function(e) {
+                draggedElement = this;
+                this.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', this.outerHTML);
+            });
+            
+            container.addEventListener('dragend', function(e) {
+                this.classList.remove('dragging');
+                draggedElement = null;
+            });
+            
+            container.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                this.classList.add('drag-over');
+            });
+            
+            container.addEventListener('dragleave', function(e) {
+                this.classList.remove('drag-over');
+            });
+            
+            container.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('drag-over');
+                
+                if (draggedElement !== this) {
+                    // Get canvas IDs before swapping
+                    const draggedCanvas = draggedElement.querySelector('canvas');
+                    const targetCanvas = this.querySelector('canvas');
+                    const draggedCanvasId = draggedCanvas ? draggedCanvas.id : null;
+                    const targetCanvasId = targetCanvas ? targetCanvas.id : null;
+                    
+                    // Get the parent elements (chart-half containers)
+                    const draggedParent = draggedElement.parentNode;
+                    const targetParent = this.parentNode;
+                    
+                    // Swap the chart containers
+                    const draggedClone = draggedElement.cloneNode(true);
+                    const targetClone = this.cloneNode(true);
+                    
+                    // Clean up any drag-related CSS classes from cloned elements
+                    draggedClone.classList.remove('dragging', 'drag-over');
+                    targetClone.classList.remove('dragging', 'drag-over');
+                    
+                    // Replace the containers
+                    draggedParent.replaceChild(targetClone, draggedElement);
+                    targetParent.replaceChild(draggedClone, this);
+                    
+                    // Recreate charts in the new positions
+                    if (draggedCanvasId && targetCanvasId) {
+                        setTimeout(() => {
+                            recreateChart(draggedCanvasId);
+                            recreateChart(targetCanvasId);
+                        }, 50);
+                    }
+                    
+                    // Re-attach event listeners to the new elements
+                    attachDragListeners(draggedClone);
+                    attachDragListeners(targetClone);
+                }
+            });
+        }
+
+        // Initialize drag and drop
+        document.querySelectorAll('.chart-container').forEach(container => {
+            attachDragListeners(container);
+        });
     </script>
 </body>
 </html>

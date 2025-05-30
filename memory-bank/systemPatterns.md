@@ -50,3 +50,27 @@ It is optional, but recommended to be updated as the project evolves.
     </div>
 </div>
 ```
+[2025-05-30 23:12:47] - Drag & Drop Chart Functionality Implementation
+**Pattern**: Interactive chart rearrangement using HTML5 drag and drop API
+**Implementation**:
+- Added draggable="true" attribute to all chart containers
+- CSS classes for visual feedback: .dragging, .drag-over, hover effects
+- JavaScript event handlers: dragstart, dragend, dragover, dragleave, drop
+- Dynamic event listener reattachment after DOM manipulation
+- User instructions banner for discoverability
+
+**Key Features**:
+- Visual feedback during drag (opacity, rotation, border highlighting)
+- Automatic chart swapping between positions
+- Maintains chart functionality after rearrangement
+- Responsive design preservation
+- Cross-browser HTML5 drag and drop support
+
+**Technical Details**:
+- Uses cloneNode(true) and replaceChild() for DOM manipulation
+- attachDragListeners() function for reusable event binding
+- setTimeout() delay for chart re-initialization after updates
+- User-select: none on titles to prevent text selection during drag
+
+**Applied to**: Both Reporter.ps1 and Reporter_for_Process.ps1
+**Benefit**: Enhanced user experience allowing custom chart arrangements for comparative analysis

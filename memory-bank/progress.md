@@ -89,3 +89,28 @@ This file tracks the project's progress using a task list format.
 - Fixed HTML structure by properly organizing all charts in chart-row/chart-half containers
 - Established system pattern for all future charts to use consistent half-width layout
 - Updated memory bank with chart layout template for future reference
+[2025-05-30 23:13:00] - Implemented drag & drop functionality for chart rearrangement
+- Added HTML5 drag and drop API to both Reporter.ps1 and Reporter_for_Process.ps1
+- Enhanced CSS with visual feedback classes (.dragging, .drag-over, hover effects)
+- Implemented JavaScript event handlers for complete drag and drop lifecycle
+- Added user instruction banner for feature discoverability
+- Charts can now be dragged and swapped for custom comparison layouts
+- Maintains all chart functionality after rearrangement
+- Dynamic event listener reattachment ensures continued functionality
+- Responsive design and cross-browser compatibility maintained
+[2025-05-30 23:17:16] - Fixed drag & drop chart data preservation bug
+- ISSUE: Charts became empty after drag and drop due to lost Chart.js instances
+- SOLUTION: Implemented chart configuration storage and recreation system
+- Added storeChartConfig() to preserve chart data, options, and configuration
+- Added recreateChart() to rebuild charts in new canvas elements after DOM manipulation
+- Modified drag drop logic to capture canvas IDs and trigger chart recreation
+- Enhanced updateAllCharts in Reporter_for_Process.ps1 to store configs for all charts
+- Charts now maintain full functionality and data after rearrangement
+- Proper cleanup with chart.destroy() before recreation prevents memory leaks
+[2025-05-30 23:22:11] - Fixed visual state cleanup for drag & drop animations
+- ISSUE: After drag and drop, charts remained visually stuck in dragging state (transparent, tilted)
+- CAUSE: Cloned elements retained CSS classes (.dragging, .drag-over) from original drag operation
+- SOLUTION: Added classList.remove() to clean up drag-related CSS classes from cloned elements
+- Applied to both draggedClone and targetClone in both Reporter scripts
+- Charts now return to normal visual state immediately after successful rearrangement
+- Maintains smooth animation during drag while ensuring clean final state

@@ -526,6 +526,20 @@ $chartJsRef
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         padding: 20px;
+        cursor: move;
+        transition: all 0.3s ease;
+    }
+    .chart-container:hover {
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        transform: translateY(-2px);
+    }
+    .chart-container.dragging {
+        opacity: 0.7;
+        transform: rotate(3deg);
+    }
+    .chart-container.drag-over {
+        border: 2px dashed #007bff;
+        background-color: #f8f9fa;
     }
     .chart-title {
         text-align: center;
@@ -533,15 +547,18 @@ $chartJsRef
         font-weight: 600;
         margin-bottom: 15px;
         color: #2c3e50;
+        user-select: none;
     }
     .chart-row {
         display: flex;
         flex-wrap: wrap;
         justify-content: space-between;
+        min-height: 50px;
     }
     .chart-half {
         width: 48%;
         margin-bottom: 20px;
+        min-height: 450px;
     }
     .controls {
         text-align: center;
@@ -571,6 +588,17 @@ $chartJsRef
         text-align: center;
         color: #2c3e50;
     }
+    .drag-instructions {
+        background-color: #e3f2fd;
+        border: 1px solid #1976d2;
+        padding: 15px;
+        margin: 20px auto;
+        border-radius: 8px;
+        text-align: center;
+        width: 90%;
+        color: #1976d2;
+        font-weight: 500;
+    }
 </style>
 </head>
 <body>
@@ -592,47 +620,53 @@ $chartJsRef
   
   <!-- Charts container, hidden until selection -->
   <div id="chartsContainer" style="display:none;">
-    <div class="chart-row">
-      <div class="chart-half">
-        <div class="chart-container">
-          <div class="chart-title">CPU Usage (%)</div>
-          <canvas id="cpuChart"></canvas>
-        </div>
-      </div>
-      <div class="chart-half">
-        <div class="chart-container">
-          <div class="chart-title">RAM Usage (MB)</div>
-          <canvas id="ramChart"></canvas>
-        </div>
-      </div>
+    <div class="drag-instructions">
+      📊 <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
     </div>
     
-    <div class="chart-row">
-      <div class="chart-half">
-        <div class="chart-container">
-          <div class="chart-title">Disk Read (Bytes/sec)</div>
-          <canvas id="readChart"></canvas>
+    <div id="chartsGrid">
+      <div class="chart-row">
+        <div class="chart-half">
+          <div class="chart-container" draggable="true" data-chart-id="cpuChart">
+            <div class="chart-title">CPU Usage (%)</div>
+            <canvas id="cpuChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-half">
+          <div class="chart-container" draggable="true" data-chart-id="ramChart">
+            <div class="chart-title">RAM Usage (MB)</div>
+            <canvas id="ramChart"></canvas>
+          </div>
         </div>
       </div>
-      <div class="chart-half">
-        <div class="chart-container">
-          <div class="chart-title">Disk Write (Bytes/sec)</div>
-          <canvas id="writeChart"></canvas>
+      
+      <div class="chart-row">
+        <div class="chart-half">
+          <div class="chart-container" draggable="true" data-chart-id="readChart">
+            <div class="chart-title">Disk Read (Bytes/sec)</div>
+            <canvas id="readChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-half">
+          <div class="chart-container" draggable="true" data-chart-id="writeChart">
+            <div class="chart-title">Disk Write (Bytes/sec)</div>
+            <canvas id="writeChart"></canvas>
+          </div>
         </div>
       </div>
-    </div>
-    
-    <div class="chart-row">
-      <div class="chart-half">
-        <div class="chart-container">
-          <div class="chart-title">Dedicated VRAM (MB)</div>
-          <canvas id="dedicatedVramChart"></canvas>
+      
+      <div class="chart-row">
+        <div class="chart-half">
+          <div class="chart-container" draggable="true" data-chart-id="dedicatedVramChart">
+            <div class="chart-title">Dedicated VRAM (MB)</div>
+            <canvas id="dedicatedVramChart"></canvas>
+          </div>
         </div>
-      </div>
-      <div class="chart-half">
-        <div class="chart-container">
-          <div class="chart-title">Shared VRAM (MB)</div>
-          <canvas id="sharedVramChart"></canvas>
+        <div class="chart-half">
+          <div class="chart-container" draggable="true" data-chart-id="sharedVramChart">
+            <div class="chart-title">Shared VRAM (MB)</div>
+            <canvas id="sharedVramChart"></canvas>
+          </div>
         </div>
       </div>
     </div>
@@ -853,6 +887,196 @@ vramSel.addEventListener('change', () => {
 vramSharedSel.addEventListener('change', () => {
   updateAllCharts(vramSharedSel.value);
 });
+
+// Store chart instances and their configurations for drag and drop
+const chartInstances = {};
+const chartConfigs = {};
+
+// Store chart configurations after creation
+function storeChartConfig(chartId, chart) {
+  chartInstances[chartId] = chart;
+  chartConfigs[chartId] = {
+    type: chart.config.type,
+    data: JSON.parse(JSON.stringify(chart.config.data)),
+    options: JSON.parse(JSON.stringify(chart.config.options))
+  };
+}
+
+// Recreate chart in a new canvas
+function recreateChart(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !chartConfigs[canvasId]) return;
+  
+  // Destroy existing chart if it exists
+  if (chartInstances[canvasId]) {
+    chartInstances[canvasId].destroy();
+  }
+  
+  // Create new chart with stored config
+  const ctx = canvas.getContext('2d');
+  const newChart = new Chart(ctx, chartConfigs[canvasId]);
+  chartInstances[canvasId] = newChart;
+  return newChart;
+}
+
+// Drag and Drop functionality
+let draggedElement = null;
+
+function attachDragListeners(container) {
+  container.addEventListener('dragstart', function(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.outerHTML);
+  });
+  
+  container.addEventListener('dragend', function(e) {
+    this.classList.remove('dragging');
+    draggedElement = null;
+  });
+  
+  container.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    this.classList.add('drag-over');
+  });
+  
+  container.addEventListener('dragleave', function(e) {
+    this.classList.remove('drag-over');
+  });
+  
+  container.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+    
+    if (draggedElement !== this) {
+      // Get canvas IDs before swapping
+      const draggedCanvas = draggedElement.querySelector('canvas');
+      const targetCanvas = this.querySelector('canvas');
+      const draggedCanvasId = draggedCanvas ? draggedCanvas.id : null;
+      const targetCanvasId = targetCanvas ? targetCanvas.id : null;
+      
+      // Get the parent elements (chart-half containers)
+      const draggedParent = draggedElement.parentNode;
+      const targetParent = this.parentNode;
+      
+      // Swap the chart containers
+      const draggedClone = draggedElement.cloneNode(true);
+      const targetClone = this.cloneNode(true);
+      
+      // Clean up any drag-related CSS classes from cloned elements
+      draggedClone.classList.remove('dragging', 'drag-over');
+      targetClone.classList.remove('dragging', 'drag-over');
+      
+      // Replace the containers
+      draggedParent.replaceChild(targetClone, draggedElement);
+      targetParent.replaceChild(draggedClone, this);
+      
+      // Recreate charts in the new positions
+      if (draggedCanvasId && targetCanvasId) {
+        setTimeout(() => {
+          recreateChart(draggedCanvasId);
+          recreateChart(targetCanvasId);
+        }, 50);
+      }
+      
+      // Re-attach event listeners to the new elements
+      attachDragListeners(draggedClone);
+      attachDragListeners(targetClone);
+    }
+  });
+}
+
+// Initialize drag and drop for existing charts
+document.querySelectorAll('.chart-container').forEach(container => {
+  attachDragListeners(container);
+});
+
+// Enhanced updateAllCharts function with chart storage
+const originalUpdateAllCharts = updateAllCharts;
+updateAllCharts = function(processName) {
+  const container = document.getElementById('chartsContainer');
+  if (!processName) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+  const d = processData[processName];
+  
+  // destroy existing charts
+  Object.values(charts).forEach(c=>c.destroy());
+  charts = {};
+  
+  // render all charts with enhanced styling and store configs
+  charts.cpu = new Chart(document.getElementById('cpuChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [createDataset(processName, d.CPU, 'rgb(255, 99, 132)')]
+    },
+    options: chartOptions
+  });
+  storeChartConfig('cpuChart', charts.cpu);
+  
+  charts.ram = new Chart(document.getElementById('ramChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [createDataset(processName, d.RAM, 'rgb(54, 162, 235)')]
+    },
+    options: chartOptions
+  });
+  storeChartConfig('ramChart', charts.ram);
+  
+  charts.read = new Chart(document.getElementById('readChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [createDataset(processName, d.ReadIO, 'rgb(75, 192, 192)')]
+    },
+    options: chartOptions
+  });
+  storeChartConfig('readChart', charts.read);
+  
+  charts.write = new Chart(document.getElementById('writeChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [createDataset(processName, d.WriteIO, 'rgb(255, 159, 64)')]
+    },
+    options: chartOptions
+  });
+  storeChartConfig('writeChart', charts.write);
+  
+  // Add VRAM charts
+  charts.dedicatedVram = new Chart(document.getElementById('dedicatedVramChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [createDataset(processName, d.DedicatedVRAM, 'rgb(153, 102, 255)')]
+    },
+    options: chartOptions
+  });
+  storeChartConfig('dedicatedVramChart', charts.dedicatedVram);
+  
+  charts.sharedVram = new Chart(document.getElementById('sharedVramChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [createDataset(processName, d.SharedVRAM, 'rgb(201, 203, 207)')]
+    },
+    options: chartOptions
+  });
+  storeChartConfig('sharedVramChart', charts.sharedVram);
+  
+  // Re-attach drag listeners after charts are updated
+  setTimeout(() => {
+    document.querySelectorAll('.chart-container').forEach(container => {
+      attachDragListeners(container);
+    });
+  }, 100);
+};
 </script>
 </body>
 </html>
