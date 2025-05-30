@@ -19,8 +19,15 @@ Create a lightweight tool that can capture comprehensive Windows PC performance 
 
 ## Overall Architecture
 
-* **Plogger Component**: Core performance logging functionality (PowerShell-based)
-* **Reporter Component**: Data visualization and report generation 
+* **Plogger Directory**: Consolidated single-folder structure containing all components
+  * **Plogger.ps1**: Core performance logging functionality (PowerShell-based)
+  * **Reporter.ps1**: System performance data visualization and report generation
+  * **Reporter_for_Process.ps1**: Process-specific performance reporting
+  * **chart.js**: Chart.js visualization library for HTML reports
+  * **Plogger.exe**: Compiled executable version
 * **Assets**: Supporting files including application icon
 * **WIM/CIM Integration**: Leverages Windows Management Instrumentation for system data access
 * **PowerShell Foundation**: Built on PowerShell for native Windows integration
+* **Single-Folder Deployment**: Simplified structure for easier testing and distribution
+
+[2025-05-30 23:33:38] - Updated architecture to reflect consolidated Plogger/ directory structure

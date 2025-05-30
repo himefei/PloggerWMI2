@@ -88,3 +88,46 @@ Switched from raw data capture to selective filtering during logging:
 - Created Calculate-CPURealTimeClockSpeed function in Reporter.ps1 
 - Added new line chart positioned next to CPU Usage chart for optimal visualization
 **Impact**: Enhanced CPU monitoring capabilities with real-time frequency tracking
+[2025-05-30 23:32:55] - Project Structure Reorganization - Report Folder Removal
+
+## Decision
+
+Removed the separate report folder and moved all Reporter components (Reporter.ps1, Reporter_for_Process.ps1) and chart.js into the Plogger folder for simplified project structure and easier testing/distribution.
+
+## Rationale 
+
+Consolidating all components into a single Plogger directory simplifies:
+- Project deployment and distribution
+- Testing workflows (all components in one location)
+- Development workflow (reduced folder navigation)
+- Package management for distribution builds
+
+## Implementation Details
+
+**Structural Changes:**
+- Removed: `/report/` directory entirely
+- Moved: `Reporter.ps1` → `Plogger/Reporter.ps1`
+- Moved: `Reporter_for_Process.ps1` → `Plogger/Reporter_for_Process.ps1`  
+- Moved: `chart.js` → `Plogger/chart.js`
+- Maintained: `Plogger.ps1` and `Plogger.exe` in `Plogger/` directory
+
+**New Project Structure:**
+```
+PloggerWMI2/
+├── Plogger/
+│   ├── Plogger.ps1          (Core performance logging)
+│   ├── Plogger.exe          (Compiled executable)
+│   ├── Reporter.ps1         (System performance visualization)
+│   ├── Reporter_for_Process.ps1 (Process-specific reporting)
+│   └── chart.js             (Chart.js library for visualizations)
+├── assets/
+│   └── icon.ico
+├── memory-bank/
+└── ProjectBrief.md
+```
+
+## Impact
+
+- **Positive**: Simplified structure, easier testing, consolidated distribution
+- **Considerations**: All file path references within scripts may need verification
+- **Benefits**: Single-folder deployment model for easier customer distribution

@@ -74,3 +74,20 @@ It is optional, but recommended to be updated as the project evolves.
 
 **Applied to**: Both Reporter.ps1 and Reporter_for_Process.ps1
 **Benefit**: Enhanced user experience allowing custom chart arrangements for comparative analysis
+[2025-05-30 23:33:19] - Consolidated Project Structure Pattern
+**Pattern**: Single-folder deployment architecture
+**Implementation**: 
+- All core components consolidated in Plogger/ directory
+- Eliminated separate report/ folder for simplified structure
+- Components: Plogger.ps1 (logging), Reporter.ps1 (system viz), Reporter_for_Process.ps1 (process viz), chart.js (library)
+- Single-directory model enables easier testing, distribution, and deployment
+**Benefit**: Simplified project structure, reduced complexity, easier customer deployment
+**Structure**:
+```
+Plogger/
+├── Plogger.ps1              # Core performance logging
+├── Plogger.exe              # Compiled executable  
+├── Reporter.ps1             # System performance visualization
+├── Reporter_for_Process.ps1 # Process-specific reporting
+└── chart.js                 # Chart.js visualization library
+```
