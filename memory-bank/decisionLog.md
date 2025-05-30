@@ -80,3 +80,11 @@ Switched from raw data capture to selective filtering during logging:
 - Maintained GPU monitoring functionality for useful metrics
 - Preserved logging performance improvements
 - Eliminated storage of unused/empty GPU counters
+[2025-05-30 22:50:10] - CPU Real-Time Clock Speed Implementation
+**Decision**: Implemented CPU processor performance capture and real-time clock speed calculation
+**Rationale**: User requested feature to capture processor performance percentage and calculate real-time clock speed by multiplying with max clock speed
+**Implementation**: 
+- Added `\Processor Information(_Total)\% Processor Performance` counter in Plogger.ps1
+- Created Calculate-CPURealTimeClockSpeed function in Reporter.ps1 
+- Added new line chart positioned next to CPU Usage chart for optimal visualization
+**Impact**: Enhanced CPU monitoring capabilities with real-time frequency tracking

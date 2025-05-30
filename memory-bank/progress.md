@@ -73,3 +73,9 @@ This file tracks the project's progress using a task list format.
 * Preserved thermal fluctuation details for accurate visualization
 * Improved temperature chart accuracy to show natural thermal variations
 * Enhanced data precision from 2 to 3 decimal places for better granularity
+[2025-05-30 22:49:49] - Implemented CPU processor performance capture and real-time clock speed calculation
+- Added CPUProcessorPerformance counter capture in Plogger.ps1 using '\Processor Information(_Total)\% Processor Performance'
+- Created Calculate-CPURealTimeClockSpeed function in Reporter.ps1 to multiply processor performance % with max clock speed
+- Added CPURealTimeClockSpeedMHz to CSV output and statistics summary
+- Created new CPU Real-Time Clock Speed line chart in HTML report positioned next to CPU Usage chart
+- Updated chart layout to accommodate new chart while maintaining responsive design

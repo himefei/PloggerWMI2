@@ -192,6 +192,41 @@ function Process-BatteryRawData {
     return $Data
 }
 
+# Function to calculate CPU real-time clock speed
+function Calculate-CPURealTimeClockSpeed {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data
+    )
+    
+    foreach ($row in $Data) {
+        $processorPerformance = $row.CPUProcessorPerformance
+        $maxClockSpeed = $row.CPUMaxClockSpeedMHz
+        
+        # Calculate real-time clock speed if both values are valid
+        if ($null -ne $processorPerformance -and $processorPerformance -ne "" -and $processorPerformance -ne "N/A" -and $processorPerformance -ne "Error" -and
+            $null -ne $maxClockSpeed -and $maxClockSpeed -ne "" -and $maxClockSpeed -ne "N/A" -and $maxClockSpeed -ne "Error") {
+            try {
+                $performancePercent = [double]$processorPerformance
+                $maxClockMHz = [double]$maxClockSpeed
+                if ($maxClockMHz -gt 0) {
+                    $realTimeClockMHz = [Math]::Round(($performancePercent / 100.0) * $maxClockMHz, 2)
+                    $row | Add-Member -MemberType NoteProperty -Name 'CPURealTimeClockSpeedMHz' -Value $realTimeClockMHz -Force
+                } else {
+                    $row | Add-Member -MemberType NoteProperty -Name 'CPURealTimeClockSpeedMHz' -Value $null -Force
+                }
+            } catch {
+                Write-Verbose "Failed to calculate CPU real-time clock speed for timestamp $($row.Timestamp): $($_.Exception.Message)"
+                $row | Add-Member -MemberType NoteProperty -Name 'CPURealTimeClockSpeedMHz' -Value $null -Force
+            }
+        } else {
+            $row | Add-Member -MemberType NoteProperty -Name 'CPURealTimeClockSpeedMHz' -Value $null -Force
+        }
+    }
+    
+    return $Data
+}
+
 # Function to calculate statistics for a given metric
 function Get-MetricStatistics {
     param (
@@ -566,6 +601,13 @@ if ($data[0].PSObject.Properties.Name -contains 'BatteryFullChargedCapacity_mWh'
     $data = Process-BatteryRawData -Data $data
 }
 
+# Calculate CPU real-time clock speed
+if ($data[0].PSObject.Properties.Name -contains 'CPUProcessorPerformance' -and
+    $data[0].PSObject.Properties.Name -contains 'CPUMaxClockSpeedMHz') {
+    Write-Host "Calculating CPU real-time clock speed..."
+    $data = Calculate-CPURealTimeClockSpeed -Data $data
+}
+
 # Check for essential columns (use CPUUsagePercent, not CPUUsage)
 $requiredColumns = @('Timestamp', 'CPUUsagePercent', 'RAMUsedMB')
 $missingColumns = $requiredColumns | Where-Object { -not $data[0].PSObject.Properties.Name -contains $_ }
@@ -599,6 +641,7 @@ $statsTableRows = [System.Collections.Generic.List[string]]::new()
 # Define metrics to summarize (use CPUUsagePercent)
 $metricsToSummarize = @(
     @{ Name = 'CPUUsagePercent'; Label = 'CPU Usage'; Unit = '%' }
+    @{ Name = 'CPURealTimeClockSpeedMHz'; Label = 'CPU Real-Time Clock Speed'; Unit = 'MHz' }
     @{ Name = 'RAMUsedMB'; Label = 'RAM Used'; Unit = 'MB' }
     @{ Name = 'DiskIOTransferSec'; Label = 'Disk I/O'; Unit = 'Transfers/sec' }
     @{ Name = 'NetworkIOBytesSec'; Label = 'Network I/O'; Unit = 'Bytes/sec' }
@@ -899,8 +942,8 @@ $reportContent = @"
         </div>
         <div class="chart-half">
             <div class="chart-container">
-                <div class="chart-title">RAM Usage (MB)</div>
-                <canvas id="ramChart"></canvas>
+                <div class="chart-title">CPU Real-Time Clock Speed (MHz)</div>
+                <canvas id="cpuClockChart"></canvas>
             </div>
         </div>
     </div>
@@ -908,10 +951,18 @@ $reportContent = @"
     <div class="chart-row">
         <div class="chart-half">
             <div class="chart-container">
+                <div class="chart-title">RAM Usage (MB)</div>
+                <canvas id="ramChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-half">
+            <div class="chart-container">
                 <div class="chart-title">Disk I/O (Transfers/sec)</div>
                 <canvas id="diskChart"></canvas>
             </div>
         </div>
+    </div>
+
         <div class="chart-half">
             <div class="chart-container">
                 <div class="chart-title">Network I/O (Bytes/sec)</div>
@@ -947,6 +998,7 @@ $reportContent = @"
         const csvData = [];
         const timestamps = [];
         const cpuUsage = [];
+        const cpuClockSpeed = [];
         const ramUsed = [];
         const ramAvailable = [];
         const diskIO = [];
@@ -1002,6 +1054,7 @@ $reportContent = @"
         rawData.forEach((row, index) => {
             timestamps.push(row.Timestamp);
             cpuUsage.push(parseNumeric(row.CPUUsagePercent));
+            cpuClockSpeed.push(parseNumeric(row.CPURealTimeClockSpeedMHz));
             ramUsed.push(parseNumeric(row.RAMUsedMB));
             ramAvailable.push(parseNumeric(row.RAMAvailableMB));
             diskIO.push(parseNumeric(row.DiskIOTransferSec));
@@ -1095,6 +1148,7 @@ $reportContent = @"
         }
 
         createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100);
+        createChart('cpuClockChart', 'CPU Real-Time Clock Speed', cpuClockSpeed, 'rgb(255, 159, 64)', 'Clock Speed (MHz)');
 
         createMultiChart('ramChart', [
             { label: 'RAM Used', data: ramUsed, borderColor: 'rgb(54, 162, 235)', backgroundColor: 'rgba(54, 162, 235, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },

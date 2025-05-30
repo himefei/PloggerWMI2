@@ -322,6 +322,7 @@ function Capture-ResourceUsage {
             # Initialize variables for metrics
             # $cpuTimeVal = $null # REMOVED: Using % Processor Time
             $cpuUtilityVal = $null # Using % Processor Utility
+            $cpuPerformanceVal = $null # Using % Processor Performance
             $ramAvailableMBVal = $null
             $ramUsedMBVal = $null
             $diskIOVal = $null
@@ -358,6 +359,16 @@ function Capture-ResourceUsage {
                 $cpuUtilityVal = $null # Ensure it's null if counter fails
             }
             # --- END NEW ---
+
+            # --- Get CPU Processor Performance ---
+            try {
+                $cpuPerformanceVal = (Get-Counter '\Processor Information(_Total)\% Processor Performance' -ErrorAction Stop).CounterSamples.CookedValue
+                Write-Verbose "CPU Processor Performance: $cpuPerformanceVal %"
+            } catch {
+                Write-Warning "Failed to get CPU Processor Performance: $($_.Exception.Message). This counter might not be available on all systems. Check permissions or run 'lodctr /R' as Admin."
+                $cpuPerformanceVal = $null # Ensure it's null if counter fails
+            }
+            # --- END CPU Processor Performance ---
 
             try {
                 $ramAvailableMBVal = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
@@ -641,6 +652,7 @@ function Capture-ResourceUsage {
                 Timestamp                     = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
                 # CPUUsagePercentTime         = $cpuTimeVal # REMOVED
                 CPUUsagePercent               = $cpuUtilityVal # RENAMED from CPUUsagePercentUtility
+                CPUProcessorPerformance       = $cpuPerformanceVal # NEW: % Processor Performance
                 CPUMaxClockSpeedMHz           = $cpuMaxClockSpeedMHz
                 RAMTotalMB                    = $totalRamMB
                 RAMUsedMB                     = $ramUsedMBVal
