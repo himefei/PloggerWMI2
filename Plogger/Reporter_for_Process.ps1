@@ -75,6 +75,43 @@ Write-Host "Using $maxThreads threads for processing"
 Write-Host "Importing data..."
 $data = Import-Csv -Path $csvPath -ErrorAction Stop
 
+# TIMESTAMP NORMALIZATION - Merge consecutive timestamps that are 1 second apart
+Write-Host "Normalizing consecutive timestamps (1 second apart) to fix split log blocks..."
+function Normalize-ConsecutiveTimestamps {
+    param([array]$Data)
+    
+    if ($Data.Count -eq 0) { return $Data }
+    
+    Write-Host "Processing $($Data.Count) rows for timestamp normalization..."
+    
+    # Sort data by timestamp first
+    $sortedData = $Data | Sort-Object Timestamp
+    
+    # Process timestamps: when we see consecutive timestamps 1 second apart, normalize them
+    for ($i = 1; $i -lt $sortedData.Count; $i++) {
+        $currentRow = $sortedData[$i]
+        $prevRow = $sortedData[$i-1]
+        
+        $currentTime = [datetime]$currentRow.Timestamp
+        $prevTime = [datetime]$prevRow.Timestamp
+        $timeDiff = ($currentTime - $prevTime).TotalSeconds
+        
+        # If timestamps are exactly 1 second apart, normalize the later one to the earlier one
+        if ($timeDiff -eq 1) {
+            # Subtract 1 second from current timestamp to match the previous one
+            $normalizedTime = $prevTime.ToString('yyyy-MM-dd HH:mm:ss')
+            $currentRow.Timestamp = $normalizedTime
+            Write-Verbose "Normalized timestamp from $($currentTime.ToString('HH:mm:ss')) to $($prevTime.ToString('HH:mm:ss'))"
+        }
+    }
+    
+    Write-Host "Timestamp normalization complete. Processed $($Data.Count) rows"
+    return $sortedData
+}
+
+# Apply timestamp normalization
+$data = Normalize-ConsecutiveTimestamps -Data $data
+
 # Validate columns - handle both old and new format
 $reqOld = 'Timestamp','ProcessName','CPUPercent','RAM_MB','IOReadBytesPerSec','IOWriteBytesPerSec','GPUDedicatedMemoryMB','GPUSharedMemoryMB'
 $reqNew = 'Timestamp','ProcessName','CPUPercentRaw','LogicalCoreCount','RAM_MB','IOReadBytesPerSec','IOWriteBytesPerSec','GPUDedicatedMemoryMB','GPUSharedMemoryMB'
