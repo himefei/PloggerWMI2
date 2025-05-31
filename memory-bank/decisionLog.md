@@ -384,3 +384,37 @@ const ramDatasets = [
 - **Comprehensive Statistics**: Complete GPU performance metrics in summary table
 - **Scalable Design**: Framework supports additional GPU vendors and metrics
 - **User Experience**: Clear visual distinction between different data series with color coding
+[2025-05-31 20:30:54] - Logging Interval Optimization - Reduced from 15 to 10 seconds
+
+## Decision
+
+Changed Plogger logging interval from 15 seconds to 10 seconds to increase data collection frequency for more granular performance monitoring.
+
+## Rationale 
+
+User requested increased logging frequency to capture performance metrics more frequently. Reducing the interval from 15 to 10 seconds provides:
+- 50% more data points for better trend analysis
+- More responsive performance monitoring
+- Enhanced granularity for short-term performance events
+- Better temporal resolution for diagnostic purposes
+
+## Implementation Details
+
+**Technical Changes:**
+- Modified `$writeIntervalSeconds` variable in Plogger.ps1 from 15 to 10 seconds (line 586)
+- Change affects both hardware and process data collection intervals
+- Maintains existing CSV structure and data integrity
+- No changes required to Reporter components as they handle variable intervals
+
+**Impact Considerations:**
+- Increased log file size due to more frequent data points (33% increase in data volume)
+- Slightly higher I/O overhead from more frequent disk writes
+- More detailed performance data for analysis and troubleshooting
+- Enhanced monitoring capability for transient performance issues
+
+## Benefits
+
+- **Enhanced Granularity**: More detailed performance timeline with 10-second resolution
+- **Better Trend Analysis**: Additional data points improve polynomial regression accuracy
+- **Improved Diagnostics**: Capture shorter performance spikes and anomalies
+- **Responsive Monitoring**: Faster detection of performance changes

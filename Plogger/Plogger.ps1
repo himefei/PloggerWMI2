@@ -583,7 +583,7 @@ function Capture-ResourceUsage {
     $lastHardwareWriteTime = $startTime
     $lastProcessWriteTime = $startTime
     $processDataBuffer = @()
-    $writeIntervalSeconds = 15 # Write interval in seconds
+    $writeIntervalSeconds = 10 # Write interval in seconds
     Write-Host "Data will be written to log files every $writeIntervalSeconds seconds."
     # --- END NEW ---
 
