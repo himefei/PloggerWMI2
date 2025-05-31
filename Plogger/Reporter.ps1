@@ -647,6 +647,13 @@ $metricsToSummarize = @(
     @{ Name = 'NetworkIOBytesSec'; Label = 'Network I/O'; Unit = 'Bytes/sec' }
     @{ Name = 'CPUPowerW'; Label = 'CPU Power'; Unit = 'W' }
     @{ Name = 'CPUPlatformPowerW'; Label = 'CPU Platform Power'; Unit = 'W' }
+    @{ Name = 'NVIDIAGPUTemperature'; Label = 'NVIDIA GPU Temperature'; Unit = '°C' }
+    @{ Name = 'IntelGPUTemperature'; Label = 'Intel GPU Temperature'; Unit = '°C' }
+    @{ Name = 'NVIDIAGPUMemoryUsed_MB'; Label = 'NVIDIA GPU VRAM Used'; Unit = 'MB' }
+    @{ Name = 'IntelGPUMemoryUsed_MB'; Label = 'Intel GPU Memory Used'; Unit = 'MB' }
+    @{ Name = 'NVIDIAGPUUtilization'; Label = 'NVIDIA GPU Utilization'; Unit = '%' }
+    @{ Name = 'IntelGPUUtilization'; Label = 'Intel GPU Utilization'; Unit = '%' }
+    @{ Name = 'NVIDIAGPUPowerDraw'; Label = 'NVIDIA GPU Power Draw'; Unit = 'W' }
 )
 
 foreach ($metricInfo in $metricsToSummarize) {
@@ -960,7 +967,7 @@ $reportContent = @"
         <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="ramChart">
-                    <div class="chart-title">RAM Usage (MB)</div>
+                    <div class="chart-title">RAM and VRAM Usage (MB)</div>
                     <canvas id="ramChart"></canvas>
                 </div>
             </div>
@@ -981,7 +988,7 @@ $reportContent = @"
             </div>
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="tempChart">
-                    <div class="chart-title">CPU Temperature (C)</div>
+                    <div class="chart-title">Temperatures (°C)</div>
                     <canvas id="tempChart"></canvas>
                 </div>
             </div>
@@ -1013,6 +1020,8 @@ $reportContent = @"
         const diskIO = [];
         const networkIO = [];
         const cpuTemp = [];
+        const gpuTemp = [];
+        const gpuVramUsed = [];
         
         // Function to convert raw temperature to Celsius for charts
         function convertRawTempToCelsius(rawValue) {
@@ -1075,6 +1084,24 @@ $reportContent = @"
                 cpuTemp.push(parseNumeric(row.CPUTemperatureC));
             } else {
                 cpuTemp.push(null);
+            }
+            
+            // Handle GPU temperature data
+            if (row.hasOwnProperty('NVIDIAGPUTemperature')) {
+                gpuTemp.push(parseNumeric(row.NVIDIAGPUTemperature));
+            } else if (row.hasOwnProperty('IntelGPUTemperature')) {
+                gpuTemp.push(parseNumeric(row.IntelGPUTemperature));
+            } else {
+                gpuTemp.push(null);
+            }
+            
+            // Handle GPU VRAM usage data
+            if (row.hasOwnProperty('NVIDIAGPUMemoryUsed_MB')) {
+                gpuVramUsed.push(parseNumeric(row.NVIDIAGPUMemoryUsed_MB));
+            } else if (row.hasOwnProperty('IntelGPUMemoryUsed_MB')) {
+                gpuVramUsed.push(parseNumeric(row.IntelGPUMemoryUsed_MB));
+            } else {
+                gpuVramUsed.push(null);
             }
             screenBrightness.push(parseNumeric(row.ScreenBrightness));
             batteryPercentage.push(parseNumeric(row.BatteryPercentage));
@@ -1344,10 +1371,28 @@ $reportContent = @"
         // Store all created charts
         storeChartConfig('cpuChart', createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100));
         storeChartConfig('cpuClockChart', createChart('cpuClockChart', 'CPU Real-Time Clock Speed', cpuClockSpeed, 'rgb(255, 159, 64)', 'Clock Speed (MHz)'));
-        storeChartConfig('ramChart', createChart('ramChart', 'RAM Used', ramUsed, 'rgb(54, 162, 235)', 'Memory (MB)'));
+        // Create RAM and VRAM chart with multi-dataset
+        const ramDatasets = [
+            { label: 'RAM Used', data: ramUsed, borderColor: 'rgb(54, 162, 235)', backgroundColor: 'rgba(54, 162, 235, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
+        ];
+        // Add GPU VRAM if available
+        if (gpuVramUsed.some(val => val !== null && val !== undefined)) {
+            ramDatasets.push({ label: 'GPU VRAM Used', data: gpuVramUsed, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
+        }
+        storeChartConfig('ramChart', createMultiChart('ramChart', ramDatasets, 'Memory (MB)'));
+        
         storeChartConfig('diskChart', createChart('diskChart', 'Disk Transfers/sec', diskIO, 'rgb(255, 159, 64)', 'Transfers/sec'));
         storeChartConfig('networkChart', createChart('networkChart', 'Network Bytes/sec', networkIO, 'rgb(153, 102, 255)', 'Bytes/sec'));
-        storeChartConfig('tempChart', createChart('tempChart', 'CPU Temperature', cpuTemp, 'rgb(255, 99, 132)', 'Temperature (°C)'));
+        
+        // Create Temperature chart with multi-dataset
+        const tempDatasets = [
+            { label: 'CPU Temperature', data: cpuTemp, borderColor: 'rgb(255, 99, 132)', backgroundColor: 'rgba(255, 99, 132, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
+        ];
+        // Add GPU temperature if available
+        if (gpuTemp.some(val => val !== null && val !== undefined)) {
+            tempDatasets.push({ label: 'GPU Temperature', data: gpuTemp, borderColor: 'rgb(255, 159, 64)', backgroundColor: 'rgba(255, 159, 64, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
+        }
+        storeChartConfig('tempChart', createMultiChart('tempChart', tempDatasets, 'Temperature (°C)'));
         
         const brightnessChart = createMultiChart('brightnessChart', [
             { label: 'Screen Brightness', data: screenBrightness, borderColor: 'rgb(255, 206, 86)', backgroundColor: 'rgba(255, 206, 86, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },

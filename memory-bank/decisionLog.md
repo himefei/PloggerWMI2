@@ -331,3 +331,56 @@ User provided working POC code demonstrating proper nvidia-smi usage with robust
 - **Accurate VRAM**: Correct detection of 8GB VRAM instead of 4095MB WMI limitation
 - **Robust Monitoring**: Reliable GPU metrics collection with proper fallback handling
 - **Production Ready**: Error-resistant implementation suitable for various GPU configurations
+[2025-05-31 14:30:50] - GPU Data Integration into HTML Reports
+
+## Decision
+
+Integrated newly captured GPU metrics (temperature, VRAM usage, utilization, power draw) into existing HTML report charts and statistics tables for comprehensive GPU monitoring visualization.
+
+## Rationale 
+
+User requested integration of GPU temperature into existing temperature chart (renamed to "Temperatures") and GPU VRAM usage into RAM chart (renamed to "RAM and VRAM"). This provides unified monitoring dashboards combining CPU and GPU metrics for better system analysis.
+
+## Implementation Details
+
+**Chart Enhancements:**
+- Updated temperature chart title from "CPU Temperature (C)" to "Temperatures (°C)"
+- Updated RAM chart title from "RAM Usage (MB)" to "RAM and VRAM Usage (MB)"
+- Converted single-dataset charts to multi-dataset charts using createMultiChart()
+- Added GPU temperature data collection and visualization
+- Added GPU VRAM usage data collection and visualization
+
+**Data Collection:**
+- Added gpuTemp and gpuVramUsed arrays for GPU metrics
+- Implemented priority-based data collection: NVIDIA GPU metrics preferred over Intel when both available
+- Added null handling for systems without GPU metrics
+- Enhanced data parsing with proper fallback mechanisms
+
+**Multi-Chart Implementation:**
+```javascript
+// Temperature chart with CPU + GPU
+const tempDatasets = [
+    { label: 'CPU Temperature', data: cpuTemp, borderColor: 'rgb(255, 99, 132)' },
+    { label: 'GPU Temperature', data: gpuTemp, borderColor: 'rgb(255, 159, 64)' }
+];
+
+// RAM chart with system RAM + GPU VRAM
+const ramDatasets = [
+    { label: 'RAM Used', data: ramUsed, borderColor: 'rgb(54, 162, 235)' },
+    { label: 'GPU VRAM Used', data: gpuVramUsed, borderColor: 'rgb(75, 192, 192)' }
+];
+```
+
+**Statistics Table Expansion:**
+- Added NVIDIA GPU Temperature, VRAM Usage, Utilization, Power Draw
+- Added Intel GPU Temperature, Memory Usage, Utilization
+- Enhanced metrics configuration with proper units (°C, MB, %, W)
+- Automatic availability detection for hybrid GPU systems
+
+## Impact
+
+- **Unified Monitoring**: Single temperature chart showing both CPU and GPU thermal data
+- **Memory Visualization**: Combined system RAM and GPU VRAM usage in one chart
+- **Comprehensive Statistics**: Complete GPU performance metrics in summary table
+- **Scalable Design**: Framework supports additional GPU vendors and metrics
+- **User Experience**: Clear visual distinction between different data series with color coding
