@@ -1,6 +1,10 @@
 # Reporter.ps1
 # Requires -Modules Microsoft.PowerShell.Utility
 
+# Set console encoding to UTF-8 to properly handle special characters
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # Function to prompt for CSV file selection
 function Select-CsvFile {
     param(
@@ -740,8 +744,8 @@ $metricsToSummarize = @(
     @{ Name = 'NetworkIOBytesSec'; Label = 'Network I/O'; Unit = 'Bytes/sec' }
     @{ Name = 'CPUPowerW'; Label = 'CPU Power'; Unit = 'W' }
     @{ Name = 'CPUPlatformPowerW'; Label = 'CPU Platform Power'; Unit = 'W' }
-    @{ Name = 'NVIDIAGPUTemperature'; Label = 'NVIDIA GPU Temperature'; Unit = '°C' }
-    @{ Name = 'IntelGPUTemperature'; Label = 'Intel GPU Temperature'; Unit = '°C' }
+    @{ Name = 'NVIDIAGPUTemperature'; Label = 'NVIDIA GPU Temperature'; Unit = '&#176;C' }
+    @{ Name = 'IntelGPUTemperature'; Label = 'Intel GPU Temperature'; Unit = '&#176;C' }
     @{ Name = 'NVIDIAGPUMemoryUsed_MB'; Label = 'NVIDIA GPU VRAM Used'; Unit = 'MB' }
     @{ Name = 'IntelGPUMemoryUsed_MB'; Label = 'Intel GPU Memory Used'; Unit = 'MB' }
     @{ Name = 'NVIDIAGPUUtilization'; Label = 'NVIDIA GPU Utilization'; Unit = '%' }
@@ -771,7 +775,7 @@ if ($data[0].PSObject.Properties.Name -contains 'CPUTemperatureRaw') {
         $tempData += [PSCustomObject]@{ CPUTemperatureC = $convertedTemps[$i] }
     }
     
-    $tempStats = Get-MetricStatistics -Data $tempData -PropertyName 'CPUTemperatureC' -Label 'CPU Temperature' -Unit '°C'
+    $tempStats = Get-MetricStatistics -Data $tempData -PropertyName 'CPUTemperatureC' -Label 'CPU Temperature' -Unit '&#176;C'
     if ($tempStats.Available) {
         $statsTableRows.Add("<tr><td>$($tempStats.Label)</td><td>$($tempStats.Average) $($tempStats.Unit)</td><td>$($tempStats.Median) $($tempStats.Unit)</td><td>$($tempStats.Minimum) $($tempStats.Unit)</td><td>$($tempStats.Maximum) $($tempStats.Unit)</td></tr>")
     } else {
@@ -779,7 +783,7 @@ if ($data[0].PSObject.Properties.Name -contains 'CPUTemperatureRaw') {
     }
 } elseif ($data[0].PSObject.Properties.Name -contains 'CPUTemperatureC') {
     # Fallback for legacy data with pre-converted temperatures
-    $stats = Get-MetricStatistics -Data $data -PropertyName 'CPUTemperatureC' -Label 'CPU Temperature' -Unit '°C'
+    $stats = Get-MetricStatistics -Data $data -PropertyName 'CPUTemperatureC' -Label 'CPU Temperature' -Unit '&#176;C'
     if ($stats.Available) {
         $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Median) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
     } else {
@@ -808,7 +812,7 @@ foreach ($gpuType in @('iGPU', 'dGPU')) {
                 $label = "$($currentGpu.Name) $($metricKey -replace '([A-Z])', ' $1' | ForEach-Object {$_.TrimStart()})"
                 $unit = ""
                 if ($metricKey -like '*Power*') { $unit = 'W' }
-                elseif ($metricKey -like '*Temperature*') { $unit = '°C' }
+                elseif ($metricKey -like '*Temperature*') { $unit = '&#176;C' }
                 elseif ($metricKey -like '*Load*' -or $metricKey -like '*Decode*' -or $metricKey -like '*Processing*') { $unit = '%' }
                 
                 $stats = Get-MetricStatistics -Data $data -PropertyName $columnName -Label $label -Unit $unit
@@ -1039,7 +1043,7 @@ $reportContent = @"
     $powerStatisticsSectionHtml
 
     <div class="drag-instructions">
-        📊 <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
+        &#128202; <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
     </div>
 
     <div id="chartsGrid">
@@ -1082,7 +1086,7 @@ $reportContent = @"
             </div>
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="tempChart">
-                    <div class="chart-title">Temperatures (°C)</div>
+                    <div class="chart-title">Temperatures (&#176;C)</div>
                     <canvas id="tempChart"></canvas>
                 </div>
             </div>
@@ -1660,6 +1664,6 @@ $reportContent = @"
 
 # Save the report to the HTML file
 Write-Host "Saving report to $htmlOutputPath..."
-$reportContent | Out-File -FilePath $htmlOutputPath -Encoding UTF8 -Force
+[System.IO.File]::WriteAllText($htmlOutputPath, $reportContent, [System.Text.UTF8Encoding]::new($false))
 
 Write-Host "Report generated successfully: $htmlOutputPath"

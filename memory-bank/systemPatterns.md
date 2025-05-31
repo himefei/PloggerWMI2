@@ -150,3 +150,41 @@ $intelMetrics = Get-IntelMetrics -GPUInfo $gpuInfo
 # Data integration with null handling
 GPUVendorMetric = if ($metrics -and $metrics.Available) { $metrics.Value } else { $null }
 ```
+
+[2025-05-31 16:22:00] - Emoji and Special Character Encoding Fix
+**Problem**: Emojis display as garbled characters like "ðŸ"Š" in HTML reports, temperature symbols show as "Â°C" instead of "°C"
+**Root Causes**:
+- PowerShell console not set to UTF-8 encoding
+- Direct emoji characters in source code get corrupted during processing
+- `Out-File -Encoding UTF8` adds BOM which can cause display issues
+- Temperature degree symbol (°) gets double-encoded
+
+**Complete Solution**:
+1. **Set Console Encoding** (at script start):
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+```
+
+2. **Replace Direct Characters with HTML Entities**:
+- Emoji `📊` → `&#128202;`
+- Emoji `📈` → `&#128200;`
+- Emoji `🔄` → `&#128260;`
+- Temperature `°C` → `&#176;C`
+
+3. **Use Proper File Writing**:
+```powershell
+# Instead of: $html | Out-File -FilePath $path -Encoding UTF8
+# Use: [System.IO.File]::WriteAllText($path, $html, [System.Text.UTF8Encoding]::new($false))
+```
+
+4. **HTML Meta Tag** (ensure present):
+```html
+<meta charset="UTF-8">
+```
+
+**Fixed Locations**:
+- Reporter.ps1: Console encoding, temperature units, drag & drop emoji, file writing
+- Reporter_for_Process.ps1: Console encoding, drag & drop emoji, file writing
+
+**Benefit**: Proper display of emojis and special characters across all browsers, professional appearance of HTML reports

@@ -1,6 +1,10 @@
 # Reporter_for_Process.ps1
 # Requires -Modules Microsoft.PowerShell.Utility
 
+# Set console encoding to UTF-8 to properly handle special characters
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # Import required assemblies for multithreading
 Add-Type -AssemblyName System.Threading
 
@@ -532,7 +536,7 @@ function Get-ChartJsReference {
 # Get Chart.js reference (local or CDN)
 $chartJsRef = Get-ChartJsReference
 
-# Generate HTML
+# Generate HTML with proper UTF-8 encoding
 $html = @"
 <!DOCTYPE html>
 <html lang="en">
@@ -658,7 +662,7 @@ $chartJsRef
   <!-- Charts container, hidden until selection -->
   <div id="chartsContainer" style="display:none;">
     <div class="drag-instructions">
-      📊 <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
+      &#128202; <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
     </div>
     
     <div id="chartsGrid">
@@ -1259,6 +1263,6 @@ updateAllCharts = function(processName) {
 </html>
 "@
 
-# Save HTML to file
-$html | Out-File -FilePath $htmlPath -Encoding UTF8 -Force
+# Save HTML to file with proper UTF-8 encoding (no BOM) to preserve emojis
+[System.IO.File]::WriteAllText($htmlPath, $html, [System.Text.UTF8Encoding]::new($false))
 Write-Host "Process report generated: $htmlPath"
