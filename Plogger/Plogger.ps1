@@ -315,7 +315,7 @@ function Get-NVIDIAMetrics {
             return $nvidiaMetrics
         }
         
-        # Use exact approach from your working POC code
+        # Use exact approach from your working POC code with power.draw added
         $queryFields = @(
             "memory.total",             # Total Memory (MiB) - index 0
             "memory.used",              # Used Memory (MiB) - index 1
@@ -323,7 +323,8 @@ function Get-NVIDIAMetrics {
             "temperature.gpu",          # GPU Temperature (Celsius) - index 3
             "fan.speed",                # Fan Speed (%) - index 4
             "utilization.gpu",          # GPU Core/SM/3D Utilization (%) - index 5
-            "utilization.memory"        # Memory Controller Utilization (%) - index 6
+            "utilization.memory",       # Memory Controller Utilization (%) - index 6
+            "power.draw"                # Power Draw (W) - index 7
         )
         $queryArgument = $queryFields -join ","
         $smiCommand = "$nvidiaSmiPath --query-gpu=$queryArgument --format=csv,noheader,nounits"
@@ -338,7 +339,7 @@ function Get-NVIDIAMetrics {
                 $values = $nvidiaOutput.Split(',') | ForEach-Object { $_.Trim() }
                 Write-Verbose "Parsed values: $($values -join ' | ')"
                 
-                if ($values.Length -ge 7) {
+                if ($values.Length -ge 8) {
                     # Parse values with proper N/A handling based on array indices
                     $nvidiaMetrics.MemoryTotalMB = if ($values[0] -ne "N/A" -and $values[0] -match "^\d+$") { [int]$values[0] } else { $null }
                     $nvidiaMetrics.MemoryUsedMB = if ($values[1] -ne "N/A" -and $values[1] -match "^\d+$") { [int]$values[1] } else { $null }
@@ -346,11 +347,12 @@ function Get-NVIDIAMetrics {
                     $nvidiaMetrics.FanSpeed = if ($values[4] -ne "N/A" -and $values[4] -match "^\d+$") { [int]$values[4] } else { $null }
                     $nvidiaMetrics.GPUUtilization = if ($values[5] -ne "N/A" -and $values[5] -match "^\d+$") { [int]$values[5] } else { $null }
                     $nvidiaMetrics.MemoryUtilization = if ($values[6] -ne "N/A" -and $values[6] -match "^\d+$") { [int]$values[6] } else { $null }
+                    $nvidiaMetrics.PowerDraw = if ($values[7] -ne "N/A" -and $values[7] -match "^\d+\.?\d*$") { [float]$values[7] } else { $null }
                     $nvidiaMetrics.Available = $true
                     
-                    Write-Verbose "NVIDIA metrics captured: Temp=$($nvidiaMetrics.Temperature)°C, Fan=$($nvidiaMetrics.FanSpeed)%, GPU=$($nvidiaMetrics.GPUUtilization)%, VRAM=$($nvidiaMetrics.MemoryUsedMB)/$($nvidiaMetrics.MemoryTotalMB)MB"
+                    Write-Verbose "NVIDIA metrics captured: Temp=$($nvidiaMetrics.Temperature)°C, Fan=$($nvidiaMetrics.FanSpeed)%, GPU=$($nvidiaMetrics.GPUUtilization)%, VRAM=$($nvidiaMetrics.MemoryUsedMB)/$($nvidiaMetrics.MemoryTotalMB)MB, Power=$($nvidiaMetrics.PowerDraw)W"
                 } else {
-                    Write-Warning "nvidia-smi returned insufficient data. Expected 7 fields, got $($values.Length): $($values -join ', ')"
+                    Write-Warning "nvidia-smi returned insufficient data. Expected 8 fields, got $($values.Length): $($values -join ', ')"
                 }
             } else {
                 Write-Warning "nvidia-smi returned empty or null output"
