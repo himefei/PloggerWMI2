@@ -168,3 +168,40 @@ User requested MPL 2.0 license implementation to replace the existing MIT licens
 - **Distribution**: Clear licensing terms for open-source distribution
 - **Development**: File-level copyleft ensures modifications remain open source
 - **Integration**: Compatible with proprietary software integration scenarios
+[2025-05-31 13:32:50] - Chart Trend Line Enhancement Implementation
+
+## Decision
+
+Added linear regression trend lines to all performance charts in both Reporter.ps1 and Reporter_for_Process.ps1 to improve data analysis and trend visualization.
+
+## Rationale 
+
+User requested dash line trending functionality for all charts including future new charts. Trend lines provide valuable insights into performance patterns, helping users identify whether metrics are improving, degrading, or remaining stable over time. This enhancement significantly improves the analytical value of the performance monitoring tool.
+
+## Implementation Details
+
+**Technical Implementation:**
+- Created calculateTrendLine() function using linear regression algorithm
+- Enhanced createChart() function to automatically add trend datasets
+- Enhanced createMultiChart() function for multi-dataset charts with trends
+- Updated Reporter_for_Process.ps1 with createTrendDataset() helper function
+- Applied trend lines to all existing charts: CPU, RAM, Disk, Network, Temperature, Battery, Screen Brightness, and Process-specific metrics
+
+**Visual Design:**
+- Trend lines displayed as dashed lines (borderDash: [5, 5])
+- Color: 70% opacity of original dataset color for subtle distinction
+- No interaction points (pointRadius: 0) to maintain focus on actual data
+- Transparent background to avoid visual interference
+
+**Future Compatibility:**
+- Pattern documented in systemPatterns.md for consistent implementation
+- All future charts will automatically inherit trend line functionality
+- Standardized approach ensures consistent user experience
+
+## Impact
+
+- **Enhanced Analytics**: Users can now easily identify performance trends and patterns
+- **Improved Decision Making**: Trend visualization aids in proactive system management
+- **Future-Proof**: All new charts will automatically include trend analysis
+- **Consistent Experience**: Unified trend visualization across all chart types
+- **Performance Impact**: Minimal computational overhead with efficient linear regression implementation

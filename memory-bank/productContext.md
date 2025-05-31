@@ -31,3 +31,5 @@ Create a lightweight tool that can capture comprehensive Windows PC performance 
 * **Single-Folder Deployment**: Simplified structure for easier testing and distribution
 
 [2025-05-30 23:33:38] - Updated architecture to reflect consolidated Plogger/ directory structure
+[2025-05-31 13:32:50] - Enhanced Chart Visualization with Trend Lines
+Added linear regression trend lines to all performance charts across both system and process monitoring reports. This enhancement improves data analysis by providing visual trend indicators that help identify performance patterns and trajectories over time.

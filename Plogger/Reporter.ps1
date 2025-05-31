@@ -1116,27 +1116,75 @@ $reportContent = @"
             }
         };
 
+        // Function to calculate linear regression trend line
+        function calculateTrendLine(data) {
+            if (!data || data.length < 2) return [];
+            
+            const validData = data.map((val, idx) => ({ x: idx, y: val }))
+                                 .filter(point => point.y !== null && point.y !== undefined && !isNaN(point.y));
+            
+            if (validData.length < 2) return [];
+            
+            const n = validData.length;
+            const sumX = validData.reduce((sum, point) => sum + point.x, 0);
+            const sumY = validData.reduce((sum, point) => sum + point.y, 0);
+            const sumXY = validData.reduce((sum, point) => sum + (point.x * point.y), 0);
+            const sumXX = validData.reduce((sum, point) => sum + (point.x * point.x), 0);
+            
+            const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+            const intercept = (sumY - slope * sumX) / n;
+            
+            // Generate trend line points for all data points (including null values)
+            return data.map((val, idx) => {
+                if (val === null || val === undefined || isNaN(val)) return null;
+                return slope * idx + intercept;
+            });
+        }
+
         function createChart(canvasId, label, data, color, yAxisLabel, min = null, max = null) {
             const ctx = document.getElementById(canvasId).getContext('2d');
             const options = JSON.parse(JSON.stringify(commonOptions));
             options.scales.y.title = { display: true, text: yAxisLabel };
             if (min !== null) options.scales.y.min = min;
             if (max !== null) options.scales.y.max = max;
+            
+            // Calculate trend line
+            const trendData = calculateTrendLine(data);
+            const trendColor = color.replace('rgb', 'rgba').replace(')', ', 0.7)');
+            
+            const datasets = [{
+                label: label,
+                data: data,
+                borderColor: color,
+                backgroundColor: color.replace(')', ', 0.2)').replace('rgb', 'rgba'),
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHitRadius: 10
+            }];
+            
+            // Add trend line dataset if we have trend data
+            if (trendData.length > 0) {
+                datasets.push({
+                    label: label + ' Trend',
+                    data: trendData,
+                    borderColor: trendColor,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    tension: 0,
+                    pointRadius: 0,
+                    pointHoverRadius: 0,
+                    pointHitRadius: 0
+                });
+            }
+            
             return new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: timestamps,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        borderColor: color,
-                        backgroundColor: color.replace(')', ', 0.2)').replace('rgb', 'rgba'),
-                        borderWidth: 2,
-                        tension: 0.4,
-                        pointRadius: 0,
-                        pointHoverRadius: 5,
-                        pointHitRadius: 10
-                    }]
+                    datasets: datasets
                 },
                 options: options
             });
@@ -1148,9 +1196,36 @@ $reportContent = @"
             options.scales.y.title = { display: true, text: yAxisLabel };
             if (min !== null) options.scales.y.min = min;
             if (max !== null) options.scales.y.max = max;
+            
+            // Create enhanced datasets with trend lines
+            const enhancedDatasets = [];
+            
+            datasets.forEach(dataset => {
+                // Add original dataset
+                enhancedDatasets.push(dataset);
+                
+                // Calculate and add trend line
+                const trendData = calculateTrendLine(dataset.data);
+                if (trendData.length > 0) {
+                    const trendColor = dataset.borderColor.replace('rgb', 'rgba').replace(')', ', 0.7)');
+                    enhancedDatasets.push({
+                        label: dataset.label + ' Trend',
+                        data: trendData,
+                        borderColor: trendColor,
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    });
+                }
+            });
+            
             return new Chart(ctx, {
                 type: 'line',
-                data: { labels: timestamps, datasets: datasets },
+                data: { labels: timestamps, datasets: enhancedDatasets },
                 options: options
             });
         }

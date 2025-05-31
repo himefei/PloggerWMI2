@@ -40,3 +40,17 @@ This file tracks the project's current status, including recent changes, current
 * Moved Reporter.ps1, Reporter_for_Process.ps1, and chart.js into Plogger/ folder
 * Established new single-folder deployment model
 * All core functionality (logging, reporting, visualization) now centralized in Plogger/
+[2025-05-31 13:32:50] - Chart Trend Line Enhancement Implementation
+## Current Focus
+
+* Enhanced chart visualization capabilities with linear regression trend lines
+* Improved analytical value of performance monitoring reports
+* Established pattern for future chart implementations to include trend analysis
+
+## Recent Changes
+
+* Added calculateTrendLine() function using linear regression algorithm to both Reporter scripts
+* Enhanced createChart() and createMultiChart() functions to automatically include trend datasets
+* Updated all existing charts (CPU, RAM, Disk, Network, Temperature, Battery, Process metrics) with dashed trend lines
+* Documented implementation pattern in systemPatterns.md for future chart development
+* Established consistent visual design: dashed lines with 70% opacity of original color

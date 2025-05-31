@@ -91,3 +91,31 @@ Plogger/
 ├── Reporter_for_Process.ps1 # Process-specific reporting
 └── chart.js                 # Chart.js visualization library
 ```
+[2025-05-31 13:32:50] - Chart Trend Line Visualization Pattern
+**Pattern**: All line charts automatically include dashed trend lines calculated using linear regression
+**Implementation**:
+- Added calculateTrendLine() function for linear regression analysis of chart data
+- Enhanced createChart() and createMultiChart() functions to automatically add trend datasets
+- Trend lines displayed as dashed lines with 70% opacity of the original color
+- Applied to both system monitoring (Reporter.ps1) and process monitoring (Reporter_for_Process.ps1)
+**Features**:
+- Automatic trend calculation for all valid data points
+- Visual distinction using borderDash: [5, 5] pattern
+- Transparent background to avoid interference with main data
+- Zero interaction points (pointRadius: 0) to maintain focus on main data
+**Benefits**: Enhanced data analysis capabilities, improved trend identification, better performance pattern recognition
+**Template**:
+```javascript
+// Calculate trend line
+const trendData = calculateTrendLine(data);
+const trendDataset = {
+    label: label + ' Trend',
+    data: trendData,
+    borderColor: color.replace('rgb', 'rgba').replace(')', ', 0.7)'),
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [5, 5],
+    tension: 0,
+    pointRadius: 0
+};
+```

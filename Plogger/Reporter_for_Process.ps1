@@ -778,6 +778,31 @@ const chartOptions = {
   }
 };
 
+// Function to calculate linear regression trend line
+function calculateTrendLine(data) {
+    if (!data || data.length < 2) return [];
+    
+    const validData = data.map((val, idx) => ({ x: idx, y: val }))
+                         .filter(point => point.y !== null && point.y !== undefined && !isNaN(point.y));
+    
+    if (validData.length < 2) return [];
+    
+    const n = validData.length;
+    const sumX = validData.reduce((sum, point) => sum + point.x, 0);
+    const sumY = validData.reduce((sum, point) => sum + point.y, 0);
+    const sumXY = validData.reduce((sum, point) => sum + (point.x * point.y), 0);
+    const sumXX = validData.reduce((sum, point) => sum + (point.x * point.x), 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    
+    // Generate trend line points for all data points (including null values)
+    return data.map((val, idx) => {
+        if (val === null || val === undefined || isNaN(val)) return null;
+        return slope * idx + intercept;
+    });
+}
+
 // Function to create dataset with consistent styling
 function createDataset(label, data, color) {
   return {
@@ -790,6 +815,26 @@ function createDataset(label, data, color) {
     pointRadius: 0,
     pointHoverRadius: 5,
     pointHitRadius: 10
+  };
+}
+
+// Function to create trend dataset
+function createTrendDataset(label, data, color) {
+  const trendData = calculateTrendLine(data);
+  if (trendData.length === 0) return null;
+  
+  const trendColor = color.replace('rgb', 'rgba').replace(')', ', 0.7)');
+  return {
+    label: label + ' Trend',
+    data: trendData,
+    borderColor: trendColor,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [5, 5],
+    tension: 0,
+    pointRadius: 0,
+    pointHoverRadius: 0,
+    pointHitRadius: 0
   };
 }
 
@@ -811,39 +856,55 @@ function updateAllCharts(processName) {
   Object.values(charts).forEach(c=>c.destroy());
   charts = {};
   
-  // render all charts with enhanced styling
+  // render all charts with enhanced styling and trend lines
+  const cpuDatasets = [createDataset(processName, d.CPU, 'rgb(255, 99, 132)')];
+  const cpuTrend = createTrendDataset(processName, d.CPU, 'rgb(255, 99, 132)');
+  if (cpuTrend) cpuDatasets.push(cpuTrend);
+  
   charts.cpu = new Chart(document.getElementById('cpuChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.CPU, 'rgb(255, 99, 132)')]
+      datasets: cpuDatasets
     },
     options: chartOptions
   });
+  
+  const ramDatasets = [createDataset(processName, d.RAM, 'rgb(54, 162, 235)')];
+  const ramTrend = createTrendDataset(processName, d.RAM, 'rgb(54, 162, 235)');
+  if (ramTrend) ramDatasets.push(ramTrend);
   
   charts.ram = new Chart(document.getElementById('ramChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.RAM, 'rgb(54, 162, 235)')]
+      datasets: ramDatasets
     },
     options: chartOptions
   });
+  
+  const readDatasets = [createDataset(processName, d.ReadIO, 'rgb(75, 192, 192)')];
+  const readTrend = createTrendDataset(processName, d.ReadIO, 'rgb(75, 192, 192)');
+  if (readTrend) readDatasets.push(readTrend);
   
   charts.read = new Chart(document.getElementById('readChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.ReadIO, 'rgb(75, 192, 192)')]
+      datasets: readDatasets
     },
     options: chartOptions
   });
+  
+  const writeDatasets = [createDataset(processName, d.WriteIO, 'rgb(255, 159, 64)')];
+  const writeTrend = createTrendDataset(processName, d.WriteIO, 'rgb(255, 159, 64)');
+  if (writeTrend) writeDatasets.push(writeTrend);
   
   charts.write = new Chart(document.getElementById('writeChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.WriteIO, 'rgb(255, 159, 64)')]
+      datasets: writeDatasets
     },
     options: chartOptions
   });
