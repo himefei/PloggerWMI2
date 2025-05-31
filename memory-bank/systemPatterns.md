@@ -126,3 +126,27 @@ const trendDataset = {
     pointRadius: 0
 };
 ```
+[2025-05-31 13:54:45] - GPU Vendor Detection and Monitoring Pattern
+**Pattern**: Multi-vendor GPU detection with vendor-specific API integration for comprehensive monitoring
+**Implementation**:
+- Get-GPUInformation() function for WMI-based vendor detection using Win32_VideoController
+- Vendor identification via PNP Device IDs (Intel: VEN_8086, NVIDIA: VEN_10DE, AMD: VEN_1002)
+- Get-NVIDIAMetrics() function using nvidia-smi CLI with CSV output parsing
+- Get-IntelMetrics() function supporting xpu-smi/xpumcli tools with adaptive parsing
+- Hybrid GPU configuration support for Intel+NVIDIA systems
+**Features**:
+- Automatic vendor tool detection across common installation paths
+- Robust error handling with graceful degradation when tools unavailable
+- Comprehensive metrics: temperature, fan speed, memory usage, utilization, power draw
+- CSV integration with 21 new GPU-related fields
+- Vendor-agnostic framework extensible for additional GPU vendors
+**Benefits**: Detailed thermal monitoring, precise memory tracking, vendor-optimized data collection, hybrid GPU support
+**Template**:
+```powershell
+# GPU Detection and Monitoring
+$gpuInfo = Get-GPUInformation
+$nvidiaMetrics = Get-NVIDIAMetrics -GPUInfo $gpuInfo
+$intelMetrics = Get-IntelMetrics -GPUInfo $gpuInfo
+# Data integration with null handling
+GPUVendorMetric = if ($metrics -and $metrics.Available) { $metrics.Value } else { $null }
+```

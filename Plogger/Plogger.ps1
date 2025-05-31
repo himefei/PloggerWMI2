@@ -170,11 +170,326 @@ function Get-PowerStatusMetrics {
    }
 }
 
+# Function to detect GPU vendor and specifications
+function Get-GPUInformation {
+    $gpuInfo = @{
+        IntelGPU = $null
+        NVIDIAGPU = $null
+        HasIntel = $false
+        HasNVIDIA = $false
+        GPUDetails = @()
+    }
+    
+    try {
+        # Get all GPU devices from WMI
+        $videoControllers = Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop |
+                           Where-Object { $_.Name -and $_.Name -ne "Microsoft Basic Display Adapter" }
+        
+        foreach ($gpu in $videoControllers) {
+            $gpuDetail = [PSCustomObject]@{
+                Name = $gpu.Name
+                Vendor = "Unknown"
+                VendorID = $gpu.PNPDeviceID -replace ".*VEN_([^&]+).*", '$1'
+                DeviceID = $gpu.PNPDeviceID -replace ".*DEV_([^&]+).*", '$1'
+                DriverVersion = $gpu.DriverVersion
+                DriverDate = $gpu.DriverDate
+                VideoMemoryMB = if ($gpu.AdapterRAM) { [math]::Round($gpu.AdapterRAM / 1MB, 0) } else { "Unknown" }
+                Status = $gpu.Status
+                Availability = $gpu.Availability
+            }
+            
+            # Determine vendor based on PNP Device ID and name
+            if ($gpu.PNPDeviceID -match "VEN_8086" -or $gpu.Name -match "Intel|UHD|HD Graphics|Iris") {
+                $gpuDetail.Vendor = "Intel"
+                $gpuInfo.HasIntel = $true
+                $gpuInfo.IntelGPU = $gpuDetail
+                Write-Host "Intel GPU detected: $($gpu.Name)"
+            }
+            elseif ($gpu.PNPDeviceID -match "VEN_10DE" -or $gpu.Name -match "NVIDIA|GeForce|Quadro|RTX|GTX") {
+                $gpuDetail.Vendor = "NVIDIA"
+                $gpuInfo.HasNVIDIA = $true
+                
+                # For NVIDIA GPUs, try to get accurate VRAM info from nvidia-smi
+                try {
+                    $nvidiaSmiPath = "nvidia-smi"
+                    $nvSmi = Get-Command $nvidiaSmiPath -ErrorAction SilentlyContinue
+                    if (-not $nvSmi) {
+                        $commonPaths = @(
+                            "${env:ProgramFiles}\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+                            "${env:ProgramFiles(x86)}\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+                            "$env:SystemRoot\System32\nvidia-smi.exe"
+                        )
+                        foreach ($path in $commonPaths) {
+                            if (Test-Path $path) {
+                                $nvidiaSmiPath = $path
+                                break
+                            }
+                        }
+                    }
+                    
+                    # Get accurate VRAM info from nvidia-smi
+                    $nvidiaVramOutput = & $nvidiaSmiPath --query-gpu=memory.total --format=csv,noheader,nounits 2>$null
+                    if ($nvidiaVramOutput -and $nvidiaVramOutput -match "^\d+$") {
+                        $gpuDetail.VideoMemoryMB = [int]$nvidiaVramOutput
+                        Write-Verbose "Updated NVIDIA VRAM from nvidia-smi: $($gpuDetail.VideoMemoryMB) MB"
+                    }
+                } catch {
+                    Write-Verbose "Could not get accurate VRAM from nvidia-smi, using WMI value: $($_.Exception.Message)"
+                }
+                
+                $gpuInfo.NVIDIAGPU = $gpuDetail
+                Write-Host "NVIDIA GPU detected: $($gpu.Name)"
+            }
+            elseif ($gpu.PNPDeviceID -match "VEN_1002" -or $gpu.Name -match "AMD|Radeon|ATI") {
+                $gpuDetail.Vendor = "AMD"
+                Write-Host "AMD GPU detected: $($gpu.Name) (vendor-specific monitoring not implemented yet)"
+            }
+            
+            $gpuInfo.GPUDetails += $gpuDetail
+        }
+        
+        # Log hybrid GPU configuration if detected
+        if ($gpuInfo.HasIntel -and $gpuInfo.HasNVIDIA) {
+            Write-Host "Hybrid GPU configuration detected: Intel + NVIDIA" -ForegroundColor Green
+        }
+        
+    } catch {
+        Write-Warning "Failed to detect GPU information: $($_.Exception.Message)"
+    }
+    
+    return $gpuInfo
+}
+
+# Function to get NVIDIA GPU metrics using nvidia-smi
+function Get-NVIDIAMetrics {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$GPUInfo
+    )
+    
+    $nvidiaMetrics = [PSCustomObject]@{
+        Temperature = $null
+        FanSpeed = $null
+        MemoryUsedMB = $null
+        MemoryTotalMB = $null
+        MemoryUtilization = $null
+        GPUUtilization = $null
+        PowerDraw = $null
+        Available = $false
+    }
+    
+    if (-not $GPUInfo.HasNVIDIA) {
+        return $nvidiaMetrics
+    }
+    
+    try {
+        # Check if nvidia-smi is available - improved path detection
+        $nvidiaSmiPath = $null
+        
+        # First try if nvidia-smi is in PATH
+        try {
+            $nvidiaSmi = Get-Command "nvidia-smi" -ErrorAction Stop
+            $nvidiaSmiPath = $nvidiaSmi.Source
+            Write-Verbose "Found nvidia-smi in PATH: $nvidiaSmiPath"
+        } catch {
+            Write-Verbose "nvidia-smi not found in PATH, trying common installation paths..."
+            
+            # Try common installation paths
+            $commonPaths = @(
+                "${env:ProgramFiles}\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+                "${env:ProgramFiles(x86)}\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+                "$env:SystemRoot\System32\nvidia-smi.exe"
+            )
+            
+            foreach ($path in $commonPaths) {
+                if (Test-Path $path) {
+                    $nvidiaSmiPath = $path
+                    Write-Verbose "Found nvidia-smi at: $nvidiaSmiPath"
+                    break
+                }
+            }
+        }
+        
+        if (-not $nvidiaSmiPath) {
+            Write-Verbose "nvidia-smi not found in any common locations"
+            return $nvidiaMetrics
+        }
+        
+        # Use exact approach from your working POC code
+        $queryFields = @(
+            "memory.total",             # Total Memory (MiB) - index 0
+            "memory.used",              # Used Memory (MiB) - index 1
+            "memory.free",              # Free Memory (MiB) - index 2
+            "temperature.gpu",          # GPU Temperature (Celsius) - index 3
+            "fan.speed",                # Fan Speed (%) - index 4
+            "utilization.gpu",          # GPU Core/SM/3D Utilization (%) - index 5
+            "utilization.memory"        # Memory Controller Utilization (%) - index 6
+        )
+        $queryArgument = $queryFields -join ","
+        $smiCommand = "$nvidiaSmiPath --query-gpu=$queryArgument --format=csv,noheader,nounits"
+        
+        try {
+            Write-Verbose "Executing nvidia-smi command: `"$nvidiaSmiPath`" --query-gpu=$queryArgument --format=csv,noheader,nounits"
+            $nvidiaOutput = & "$nvidiaSmiPath" --query-gpu=$queryArgument --format=csv,noheader,nounits 2>$null
+            Write-Verbose "nvidia-smi raw output: $nvidiaOutput"
+            
+            if ($nvidiaOutput -and $nvidiaOutput.Trim() -ne "") {
+                # Parse the CSV output - split by comma and trim whitespace
+                $values = $nvidiaOutput.Split(',') | ForEach-Object { $_.Trim() }
+                Write-Verbose "Parsed values: $($values -join ' | ')"
+                
+                if ($values.Length -ge 7) {
+                    # Parse values with proper N/A handling based on array indices
+                    $nvidiaMetrics.MemoryTotalMB = if ($values[0] -ne "N/A" -and $values[0] -match "^\d+$") { [int]$values[0] } else { $null }
+                    $nvidiaMetrics.MemoryUsedMB = if ($values[1] -ne "N/A" -and $values[1] -match "^\d+$") { [int]$values[1] } else { $null }
+                    $nvidiaMetrics.Temperature = if ($values[3] -ne "N/A" -and $values[3] -match "^\d+$") { [int]$values[3] } else { $null }
+                    $nvidiaMetrics.FanSpeed = if ($values[4] -ne "N/A" -and $values[4] -match "^\d+$") { [int]$values[4] } else { $null }
+                    $nvidiaMetrics.GPUUtilization = if ($values[5] -ne "N/A" -and $values[5] -match "^\d+$") { [int]$values[5] } else { $null }
+                    $nvidiaMetrics.MemoryUtilization = if ($values[6] -ne "N/A" -and $values[6] -match "^\d+$") { [int]$values[6] } else { $null }
+                    $nvidiaMetrics.Available = $true
+                    
+                    Write-Verbose "NVIDIA metrics captured: Temp=$($nvidiaMetrics.Temperature)°C, Fan=$($nvidiaMetrics.FanSpeed)%, GPU=$($nvidiaMetrics.GPUUtilization)%, VRAM=$($nvidiaMetrics.MemoryUsedMB)/$($nvidiaMetrics.MemoryTotalMB)MB"
+                } else {
+                    Write-Warning "nvidia-smi returned insufficient data. Expected 7 fields, got $($values.Length): $($values -join ', ')"
+                }
+            } else {
+                Write-Warning "nvidia-smi returned empty or null output"
+            }
+        } catch {
+            Write-Warning "Error executing nvidia-smi command: $($_.Exception.Message)"
+        }
+        
+        if (-not $nvidiaMetrics.Available) {
+            Write-Verbose "nvidia-smi not found or failed to execute. NVIDIA GPU metrics will not be available."
+        }
+    } catch {
+        Write-Warning "Failed to get NVIDIA metrics: $($_.Exception.Message)"
+    }
+    
+    return $nvidiaMetrics
+}
+
+# Function to get Intel GPU metrics using Intel GPU tools
+function Get-IntelMetrics {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$GPUInfo
+    )
+    
+    $intelMetrics = [PSCustomObject]@{
+        Temperature = $null
+        FanSpeed = $null
+        MemoryUsedMB = $null
+        MemoryTotalMB = $null
+        MemoryUtilization = $null
+        GPUUtilization = $null
+        PowerDraw = $null
+        Available = $false
+    }
+    
+    if (-not $GPUInfo.HasIntel) {
+        return $intelMetrics
+    }
+    
+    try {
+        # Check for Intel GPU monitoring tools (xpu-smi or xpumcli)
+        $intelTool = $null
+        $toolArgs = ""
+        
+        # Try to find xpu-smi first (newer tool)
+        $xpuSmi = Get-Command "xpu-smi" -ErrorAction SilentlyContinue
+        if ($xpuSmi) {
+            $intelTool = $xpuSmi.Source
+            $toolArgs = "dump -d 0 -m 0,1,5,18,19"  # Memory, temperature, power metrics
+        } else {
+            # Try xpumcli (older tool)
+            $xpumCli = Get-Command "xpumcli" -ErrorAction SilentlyContinue
+            if ($xpumCli) {
+                $intelTool = $xpumCli.Source
+                $toolArgs = "dump -d 0 -m 0,1,5,18,19"
+            } else {
+                # Try common installation paths for Intel GPU tools
+                $commonPaths = @(
+                    "${env:ProgramFiles}\Intel\oneAPI\Level-Zero\bin\xpu-smi.exe",
+                    "${env:ProgramFiles(x86)}\Intel\oneAPI\Level-Zero\bin\xpu-smi.exe",
+                    "${env:ProgramFiles}\Intel\Level-Zero\bin\xpu-smi.exe",
+                    "${env:ProgramFiles}\Intel\GPU\bin\xpumcli.exe",
+                    "${env:ProgramFiles(x86)}\Intel\GPU\bin\xpumcli.exe"
+                )
+                
+                foreach ($path in $commonPaths) {
+                    if (Test-Path $path) {
+                        $intelTool = $path
+                        if ($path -like "*xpu-smi*") {
+                            $toolArgs = "dump -d 0 -m 0,1,5,18,19"
+                        } else {
+                            $toolArgs = "dump -d 0 -m 0,1,5,18,19"
+                        }
+                        break
+                    }
+                }
+            }
+        }
+        
+        if ($intelTool) {
+            # Execute Intel GPU monitoring tool
+            $intelOutput = & $intelTool $toolArgs.Split(' ') 2>$null
+            
+            if ($intelOutput) {
+                # Parse Intel GPU tool output (format may vary between tools)
+                foreach ($line in $intelOutput) {
+                    if ($line -match "GPU Temperature.*?(\d+)") {
+                        $intelMetrics.Temperature = [int]$matches[1]
+                    }
+                    elseif ($line -match "Memory Used.*?(\d+)") {
+                        $intelMetrics.MemoryUsedMB = [int]$matches[1]
+                    }
+                    elseif ($line -match "Memory Total.*?(\d+)") {
+                        $intelMetrics.MemoryTotalMB = [int]$matches[1]
+                    }
+                    elseif ($line -match "GPU Utilization.*?(\d+)") {
+                        $intelMetrics.GPUUtilization = [int]$matches[1]
+                    }
+                    elseif ($line -match "Power.*?(\d+\.?\d*)") {
+                        $intelMetrics.PowerDraw = [float]$matches[1]
+                    }
+                }
+                
+                # Calculate memory utilization if we have both values
+                if ($intelMetrics.MemoryUsedMB -and $intelMetrics.MemoryTotalMB -and $intelMetrics.MemoryTotalMB -gt 0) {
+                    $intelMetrics.MemoryUtilization = [math]::Round(($intelMetrics.MemoryUsedMB / $intelMetrics.MemoryTotalMB) * 100, 2)
+                }
+                
+                $intelMetrics.Available = $true
+                Write-Verbose "Intel GPU metrics captured: Temp=$($intelMetrics.Temperature)°C, GPU=$($intelMetrics.GPUUtilization)%"
+            }
+        } else {
+            Write-Verbose "Intel GPU monitoring tools (xpu-smi/xpumcli) not found. Intel GPU detailed metrics will not be available."
+        }
+    } catch {
+        Write-Warning "Failed to get Intel GPU metrics: $($_.Exception.Message)"
+    }
+    
+    return $intelMetrics
+}
+
 # Function to capture hardware resource usage
 function Capture-ResourceUsage {
     param (
         [int]$Duration # Duration in minutes. 0 means indefinite.
     )
+
+    # --- Detect GPU Information ---
+    Write-Host "Detecting GPU configuration..." -ForegroundColor Cyan
+    $script:gpuInfo = Get-GPUInformation
+    
+    if ($script:gpuInfo.GPUDetails.Count -eq 0) {
+        Write-Host "No discrete GPUs detected. Using basic GPU monitoring only." -ForegroundColor Yellow
+    } else {
+        foreach ($gpu in $script:gpuInfo.GPUDetails) {
+            Write-Host "Found: $($gpu.Vendor) - $($gpu.Name) ($($gpu.VideoMemoryMB) MB VRAM)" -ForegroundColor Green
+        }
+    }
 
     # --- Get PC Serial Number and Total RAM ---
     $pcSerialNumber = "UnknownSerial"
@@ -633,6 +948,19 @@ function Capture-ResourceUsage {
             }
             # --- END NEW Filtered GPU Engine Capture ---
 
+            # --- NEW: Vendor-Specific GPU Metrics Collection ---
+            $nvidiaGPUMetrics = $null
+            $intelGPUMetrics = $null
+            
+            if ($script:gpuInfo.HasNVIDIA) {
+                $nvidiaGPUMetrics = Get-NVIDIAMetrics -GPUInfo $script:gpuInfo
+            }
+            
+            if ($script:gpuInfo.HasIntel) {
+                $intelGPUMetrics = Get-IntelMetrics -GPUInfo $script:gpuInfo
+            }
+            # --- END Vendor-Specific GPU Metrics ---
+
             # Create the base data object with metrics
             $currentData = [PSCustomObject]@{
                 Timestamp                     = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -657,6 +985,29 @@ function Capture-ResourceUsage {
                 SystemPowerStatus             = $powerMetrics.SystemPowerStatus
                 ActiveOverlayName             = $powerMetrics.ActiveOverlayName
                 ActiveOverlayGUID             = $powerMetrics.ActiveOverlayGUID
+                # GPU Information
+                GPUHasIntel                   = $script:gpuInfo.HasIntel
+                GPUHasNVIDIA                  = $script:gpuInfo.HasNVIDIA
+                GPUIntelName                  = if ($script:gpuInfo.IntelGPU) { $script:gpuInfo.IntelGPU.Name } else { "N/A" }
+                GPUNVIDIAName                 = if ($script:gpuInfo.NVIDIAGPU) { $script:gpuInfo.NVIDIAGPU.Name } else { "N/A" }
+                GPUIntelVRAM_MB               = if ($script:gpuInfo.IntelGPU) { $script:gpuInfo.IntelGPU.VideoMemoryMB } else { "N/A" }
+                GPUNVIDIAVRAM_MB              = if ($script:gpuInfo.NVIDIAGPU) { $script:gpuInfo.NVIDIAGPU.VideoMemoryMB } else { "N/A" }
+                # NVIDIA GPU Metrics
+                NVIDIAGPUTemperature          = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.Temperature } else { $null }
+                NVIDIAGPUFanSpeed             = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.FanSpeed } else { $null }
+                NVIDIAGPUMemoryUsed_MB        = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.MemoryUsedMB } else { $null }
+                NVIDIAGPUMemoryTotal_MB       = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.MemoryTotalMB } else { $null }
+                NVIDIAGPUMemoryUtilization    = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.MemoryUtilization } else { $null }
+                NVIDIAGPUUtilization          = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.GPUUtilization } else { $null }
+                NVIDIAGPUPowerDraw            = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.PowerDraw } else { $null }
+                # Intel GPU Metrics
+                IntelGPUTemperature           = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.Temperature } else { $null }
+                IntelGPUFanSpeed              = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.FanSpeed } else { $null }
+                IntelGPUMemoryUsed_MB         = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.MemoryUsedMB } else { $null }
+                IntelGPUMemoryTotal_MB        = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.MemoryTotalMB } else { $null }
+                IntelGPUMemoryUtilization     = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.MemoryUtilization } else { $null }
+                IntelGPUUtilization           = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.GPUUtilization } else { $null }
+                IntelGPUPowerDraw             = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.PowerDraw } else { $null }
             }
             
             # Add GPU Engine metrics from the hashtable (only useful ones with values)

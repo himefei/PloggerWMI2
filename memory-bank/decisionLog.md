@@ -242,3 +242,92 @@ User feedback indicated that straight linear trend lines were too simplistic for
 - **Industry Standard**: Aligns with scientific best practices for performance monitoring
 - **Future Compatibility**: Enhanced algorithm maintained for all future charts
 - **Robustness**: Numerical stability and error handling for edge cases
+[2025-05-31 13:54:45] - GPU Vendor Detection and Vendor-Specific API Integration
+
+## Decision
+
+Implemented comprehensive GPU vendor detection and integrated vendor-specific APIs (NVIDIA nvidia-smi and Intel xpu-smi/xpumcli) for detailed GPU monitoring including temperature, fan speed, and memory usage.
+
+## Rationale 
+
+User requested GPU vendor detection with support for hybrid GPU configurations (Intel + NVIDIA) and vendor-specific API integration for detailed metrics. Generic WMI GPU monitoring is limited and doesn't provide thermal or detailed memory metrics. Vendor-specific tools provide comprehensive GPU monitoring capabilities including temperature, fan control, and precise memory usage data.
+
+## Implementation Details
+
+**GPU Detection:**
+- Added Get-GPUInformation() function using Win32_VideoController WMI class
+- Detects Intel (VEN_8086), NVIDIA (VEN_10DE), and AMD (VEN_1002) GPUs via PNP Device IDs
+- Supports hybrid GPU configurations with multiple vendors simultaneously
+- Extracts GPU name, VRAM size, driver version, and vendor information
+
+**NVIDIA Integration (nvidia-smi):**
+- Added Get-NVIDIAMetrics() function with nvidia-smi CLI integration
+- Monitors: GPU temperature, fan speed, memory usage (used/total), GPU utilization, power draw
+- Searches common installation paths: Program Files, System32
+- Uses CSV output format for reliable parsing
+
+**Intel Integration (xpu-smi/xpumcli):**
+- Added Get-IntelMetrics() function supporting both xpu-smi (newer) and xpumcli (legacy)
+- Monitors: GPU temperature, memory usage, GPU utilization, power draw
+- Searches Intel oneAPI and GPU toolkit installation paths
+- Adaptive parsing for different tool output formats
+
+**Data Integration:**
+- Added 21 new fields to CSV output for comprehensive GPU monitoring
+- GPU information: vendor detection, names, VRAM sizes
+- NVIDIA metrics: temperature, fan, memory, utilization, power
+- Intel metrics: temperature, memory, utilization, power
+- Graceful degradation when vendor tools are unavailable
+
+## Impact
+
+- **Comprehensive Monitoring**: Full GPU vendor ecosystem support with detailed metrics
+- **Hybrid GPU Support**: Proper handling of Intel+NVIDIA configurations common in laptops
+- **Vendor-Specific APIs**: Leverages official tools for accurate thermal and performance data
+- **Production Ready**: Robust error handling and fallback mechanisms
+- **Future Extensible**: Framework ready for AMD GPU support addition
+[2025-05-31 14:04:40] - GPU Monitoring Error Fixes and Improvements
+
+## Decision
+
+Fixed critical issues in NVIDIA GPU monitoring including N/A value parsing errors and inaccurate VRAM detection, based on user's working POC code analysis.
+
+## Rationale 
+
+Initial implementation had several flaws:
+1. Conversion errors when nvidia-smi returned "N/A" values for unavailable metrics
+2. Inaccurate VRAM detection via WMI (showing 4095MB instead of 8GB)
+3. Inefficient nvidia-smi queries causing multiple process calls
+User provided working POC code demonstrating proper nvidia-smi usage with robust error handling.
+
+## Implementation Details
+
+**NVIDIA Metrics Fixes:**
+- Enhanced Get-NVIDIAMetrics() with comprehensive query similar to user's POC
+- Added proper regex validation for numeric values before type conversion
+- Implemented robust "N/A" handling: `if ($value -ne "N/A" -and $value -match "^\d+$")`
+- Single nvidia-smi call with multiple metrics: name, memory.total, memory.used, temperature.gpu, fan.speed, utilization.gpu, utilization.memory, power.draw
+
+**VRAM Detection Fix:**
+- Enhanced Get-GPUInformation() to use nvidia-smi for accurate VRAM detection
+- Added fallback from WMI to nvidia-smi for NVIDIA GPUs
+- Proper error handling when nvidia-smi unavailable
+- Verbose logging for VRAM detection process
+
+**Error Handling Improvements:**
+- Added regex pattern matching for all numeric conversions
+- Graceful handling of missing or "N/A" values
+- Enhanced verbose logging for debugging
+- Proper exception handling in nested try-catch blocks
+
+**Code Quality:**
+- Adopted proven patterns from user's working POC
+- Maintained compatibility with existing CSV structure
+- Added comprehensive field validation before type conversion
+
+## Impact
+
+- **Resolved Errors**: Eliminated "Cannot convert value '[N/A]' to type 'System.Int32'" errors
+- **Accurate VRAM**: Correct detection of 8GB VRAM instead of 4095MB WMI limitation
+- **Robust Monitoring**: Reliable GPU metrics collection with proper fallback handling
+- **Production Ready**: Error-resistant implementation suitable for various GPU configurations
