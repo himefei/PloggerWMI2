@@ -170,6 +170,45 @@ function Get-PowerStatusMetrics {
    }
 }
 
+# Function to detect system model and product information
+function Get-SystemInformation {
+    $systemInfo = [PSCustomObject]@{
+        Manufacturer = "Unknown"
+        Model = "Unknown"
+        Version = "Unknown"
+        ProductName = "Unknown"
+        SerialNumber = "Unknown"
+    }
+    
+    try {
+        # Get system product information using Win32_ComputerSystemProduct
+        $productInfo = Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop
+        if ($productInfo) {
+            $systemInfo.Version = if ($productInfo.Version) { $productInfo.Version.Trim() } else { "Unknown" }
+            $systemInfo.ProductName = if ($productInfo.Name) { $productInfo.Name.Trim() } else { "Unknown" }
+            $systemInfo.SerialNumber = if ($productInfo.IdentifyingNumber) { $productInfo.IdentifyingNumber.Trim() } else { "Unknown" }
+            Write-Verbose "System Product Version: $($systemInfo.Version)"
+            Write-Verbose "System Product Name: $($systemInfo.ProductName)"
+        }
+        
+        # Get additional system information from Win32_ComputerSystem
+        $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        if ($computerSystem) {
+            $systemInfo.Manufacturer = if ($computerSystem.Manufacturer) { $computerSystem.Manufacturer.Trim() } else { "Unknown" }
+            $systemInfo.Model = if ($computerSystem.Model) { $computerSystem.Model.Trim() } else { "Unknown" }
+            Write-Verbose "System Manufacturer: $($systemInfo.Manufacturer)"
+            Write-Verbose "System Model: $($systemInfo.Model)"
+        }
+        
+        Write-Host "System detected: $($systemInfo.Manufacturer) $($systemInfo.Model) (Version: $($systemInfo.Version))" -ForegroundColor Cyan
+        
+    } catch {
+        Write-Warning "Failed to detect system information: $($_.Exception.Message)"
+    }
+    
+    return $systemInfo
+}
+
 # Function to detect GPU vendor and specifications
 function Get-GPUInformation {
     $gpuInfo = @{
@@ -481,6 +520,10 @@ function Capture-ResourceUsage {
         [int]$Duration # Duration in minutes. 0 means indefinite.
     )
 
+    # --- Detect System Information ---
+    Write-Host "Detecting system information..." -ForegroundColor Cyan
+    $script:systemInfo = Get-SystemInformation
+    
     # --- Detect GPU Information ---
     Write-Host "Detecting GPU configuration..." -ForegroundColor Cyan
     $script:gpuInfo = Get-GPUInformation
@@ -987,6 +1030,12 @@ function Capture-ResourceUsage {
                 SystemPowerStatus             = $powerMetrics.SystemPowerStatus
                 ActiveOverlayName             = $powerMetrics.ActiveOverlayName
                 ActiveOverlayGUID             = $powerMetrics.ActiveOverlayGUID
+                # System Information
+                SystemManufacturer            = $script:systemInfo.Manufacturer
+                SystemModel                   = $script:systemInfo.Model
+                SystemVersion                 = $script:systemInfo.Version
+                SystemProductName             = $script:systemInfo.ProductName
+                SystemSerialNumber            = $script:systemInfo.SerialNumber
                 # GPU Information
                 GPUHasIntel                   = $script:gpuInfo.HasIntel
                 GPUHasNVIDIA                  = $script:gpuInfo.HasNVIDIA

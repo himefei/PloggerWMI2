@@ -227,6 +227,92 @@ function Calculate-CPURealTimeClockSpeed {
     return $Data
 }
 
+# Function to classify CPU TDP based on system version and calculate estimated power draw
+function Calculate-CPUPowerEstimation {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$Data
+    )
+    
+    foreach ($row in $Data) {
+        $systemVersion = $row.SystemVersion
+        $cpuPerformance = $row.CPUProcessorPerformance
+        $estimatedPowerDraw = $null
+        
+        # Classify CPU TDP based on system version
+        $cpuTDP = $null
+        if ($null -ne $systemVersion -and $systemVersion -ne "" -and $systemVersion -ne "N/A" -and $systemVersion -ne "Unknown") {
+            # ThinkCentre - Desktop systems
+            if ($systemVersion -match "ThinkCentre") {
+                $cpuTDP = 65  # 65W for desktop systems
+            }
+            # ThinkStation - Workstation systems
+            elseif ($systemVersion -match "ThinkStation") {
+                $cpuTDP = 225  # 225W for high-end workstations
+            }
+            # ThinkPad P1 - High-performance mobile workstation
+            elseif ($systemVersion -match "ThinkPad P1") {
+                $cpuTDP = 45  # 45W for mobile workstation
+            }
+            # ThinkPad E series and L series - Entry-level and mid-range laptops
+            elseif ($systemVersion -match "ThinkPad E1[4-6]|ThinkPad L1[3-6]") {
+                $cpuTDP = 12  # 12W for efficient entry-level systems
+            }
+            # ThinkPad T series - Business laptops
+            elseif ($systemVersion -match "ThinkPad T1[46]") {
+                $cpuTDP = 28  # 28W for business laptops
+            }
+            # ThinkPad P14 - Mobile workstation
+            elseif ($systemVersion -match "ThinkPad P14") {
+                $cpuTDP = 28  # 28W for compact mobile workstation
+            }
+            # ThinkPad P16 - Large mobile workstation
+            elseif ($systemVersion -match "ThinkPad P16") {
+                $cpuTDP = 45  # 45W for large mobile workstation
+            }
+            # ThinkPad X13 - Ultra-portable
+            elseif ($systemVersion -match "ThinkPad X13") {
+                $cpuTDP = 15  # 15W for ultra-portable
+            }
+            # ThinkPad X1 series - Premium ultra-portable
+            elseif ($systemVersion -match "ThinkPad X1") {
+                $cpuTDP = 15  # 15W for premium ultra-portable
+            }
+            # ThinkBook series - SMB laptops
+            elseif ($systemVersion -match "ThinkBook") {
+                $cpuTDP = 25  # 25W for SMB laptops
+            }
+            # Default fallback for unknown systems
+            else {
+                $cpuTDP = 35  # Default 35W for unknown systems
+            }
+        } else {
+            $cpuTDP = 35  # Default 35W when system version unavailable
+        }
+        
+        # Calculate estimated power draw using CPU performance percentage
+        if ($null -ne $cpuPerformance -and $cpuPerformance -ne "" -and $cpuPerformance -ne "N/A" -and $cpuPerformance -ne "Error" -and $null -ne $cpuTDP) {
+            try {
+                $performancePercent = [double]$cpuPerformance
+                # Estimate power draw: TDP * (Performance% / 100)
+                # Add minimum idle power (typically 10-15% of TDP)
+                $idlePowerPercent = 0.12  # 12% of TDP for idle power
+                $activePowerPercent = ($performancePercent / 100.0) * (1.0 - $idlePowerPercent)
+                $estimatedPowerDraw = [Math]::Round($cpuTDP * ($idlePowerPercent + $activePowerPercent), 2)
+            } catch {
+                Write-Verbose "Failed to calculate CPU power estimation for timestamp $($row.Timestamp): $($_.Exception.Message)"
+                $estimatedPowerDraw = $null
+            }
+        }
+        
+        # Add the calculated values to the row
+        $row | Add-Member -MemberType NoteProperty -Name 'CPUEstimatedTDP' -Value $cpuTDP -Force
+        $row | Add-Member -MemberType NoteProperty -Name 'CPUEstimatedPowerDraw' -Value $estimatedPowerDraw -Force
+    }
+    
+    return $Data
+}
+
 # Function to calculate statistics for a given metric
 function Get-MetricStatistics {
     param (
@@ -608,6 +694,13 @@ if ($data[0].PSObject.Properties.Name -contains 'CPUProcessorPerformance' -and
     $data = Calculate-CPURealTimeClockSpeed -Data $data
 }
 
+# Calculate CPU power estimation based on system version and performance
+if ($data[0].PSObject.Properties.Name -contains 'SystemVersion' -and
+    $data[0].PSObject.Properties.Name -contains 'CPUProcessorPerformance') {
+    Write-Host "Calculating CPU power estimation based on system model..."
+    $data = Calculate-CPUPowerEstimation -Data $data
+}
+
 # Check for essential columns (use CPUUsagePercent, not CPUUsage)
 $requiredColumns = @('Timestamp', 'CPUUsagePercent', 'RAMUsedMB')
 $missingColumns = $requiredColumns | Where-Object { -not $data[0].PSObject.Properties.Name -contains $_ }
@@ -654,6 +747,7 @@ $metricsToSummarize = @(
     @{ Name = 'NVIDIAGPUUtilization'; Label = 'NVIDIA GPU Utilization'; Unit = '%' }
     @{ Name = 'IntelGPUUtilization'; Label = 'Intel GPU Utilization'; Unit = '%' }
     @{ Name = 'NVIDIAGPUPowerDraw'; Label = 'NVIDIA GPU Power Draw'; Unit = 'W' }
+    @{ Name = 'CPUEstimatedPowerDraw'; Label = 'CPU Estimated Power Draw'; Unit = 'W' }
 )
 
 foreach ($metricInfo in $metricsToSummarize) {
@@ -1002,6 +1096,15 @@ $reportContent = @"
                 </div>
             </div>
             <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="powerDrawChart">
+                    <div class="chart-title">Power Draw (W)</div>
+                    <canvas id="powerDrawChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="gpuEngineChart">
                     <div class="chart-title">GPU Engine Utilization (%)</div>
                     <canvas id="gpuEngineChart"></canvas>
@@ -1022,6 +1125,8 @@ $reportContent = @"
         const cpuTemp = [];
         const gpuTemp = [];
         const gpuVramUsed = [];
+        const cpuPowerDraw = [];
+        const gpuPowerDraw = [];
         
         // Function to convert raw temperature to Celsius for charts
         function convertRawTempToCelsius(rawValue) {
@@ -1103,6 +1208,23 @@ $reportContent = @"
             } else {
                 gpuVramUsed.push(null);
             }
+            
+            // Handle CPU power draw data
+            if (row.hasOwnProperty('CPUEstimatedPowerDraw')) {
+                cpuPowerDraw.push(parseNumeric(row.CPUEstimatedPowerDraw));
+            } else {
+                cpuPowerDraw.push(null);
+            }
+            
+            // Handle GPU power draw data
+            if (row.hasOwnProperty('NVIDIAGPUPowerDraw')) {
+                gpuPowerDraw.push(parseNumeric(row.NVIDIAGPUPowerDraw));
+            } else if (row.hasOwnProperty('IntelGPUPowerDraw')) {
+                gpuPowerDraw.push(parseNumeric(row.IntelGPUPowerDraw));
+            } else {
+                gpuPowerDraw.push(null);
+            }
+            
             screenBrightness.push(parseNumeric(row.ScreenBrightness));
             batteryPercentage.push(parseNumeric(row.BatteryPercentage));
             gpuEngineNames.forEach(engineName => {
@@ -1393,6 +1515,30 @@ $reportContent = @"
             tempDatasets.push({ label: 'GPU Temperature', data: gpuTemp, borderColor: 'rgb(255, 159, 64)', backgroundColor: 'rgba(255, 159, 64, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
         }
         storeChartConfig('tempChart', createMultiChart('tempChart', tempDatasets, 'Temperature (°C)'));
+        
+        // Create Power Draw chart with multi-dataset
+        const powerDatasets = [];
+        // Add CPU power draw if available
+        if (cpuPowerDraw.some(val => val !== null && val !== undefined)) {
+            powerDatasets.push({ label: 'CPU Power Draw', data: cpuPowerDraw, borderColor: 'rgb(255, 99, 132)', backgroundColor: 'rgba(255, 99, 132, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
+        }
+        // Add GPU power draw if available
+        if (gpuPowerDraw.some(val => val !== null && val !== undefined)) {
+            powerDatasets.push({ label: 'GPU Power Draw', data: gpuPowerDraw, borderColor: 'rgb(54, 162, 235)', backgroundColor: 'rgba(54, 162, 235, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
+        }
+        if (powerDatasets.length > 0) {
+            storeChartConfig('powerDrawChart', createMultiChart('powerDrawChart', powerDatasets, 'Power (W)'));
+        } else {
+            // Show message if no power data available
+            const powerDrawCanvas = document.getElementById('powerDrawChart');
+            if (powerDrawCanvas) {
+                const ctx = powerDrawCanvas.getContext('2d');
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#666';
+                ctx.fillText('No Power Draw data available', powerDrawCanvas.width / 2, powerDrawCanvas.height / 2);
+            }
+        }
         
         const brightnessChart = createMultiChart('brightnessChart', [
             { label: 'Screen Brightness', data: screenBrightness, borderColor: 'rgb(255, 206, 86)', backgroundColor: 'rgba(255, 206, 86, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 },
