@@ -91,23 +91,30 @@ Plogger/
 ├── Reporter_for_Process.ps1 # Process-specific reporting
 └── chart.js                 # Chart.js visualization library
 ```
-[2025-05-31 13:32:50] - Chart Trend Line Visualization Pattern
-**Pattern**: All line charts automatically include dashed trend lines calculated using linear regression
+[2025-05-31 13:39:30] - Scientific Polynomial Regression Trend Line Pattern
+**Pattern**: All line charts automatically include curved trend lines calculated using polynomial regression for scientific accuracy
 **Implementation**:
-- Added calculateTrendLine() function for linear regression analysis of chart data
-- Enhanced createChart() and createMultiChart() functions to automatically add trend datasets
-- Trend lines displayed as dashed lines with 70% opacity of the original color
+- Added calculateTrendLine() function using adaptive polynomial regression (degree 2-3)
+- Implemented polynomialRegression() with least squares method and Vandermonde matrix approach
+- Added gaussianElimination() solver for robust coefficient calculation
+- Enhanced createChart() and createMultiChart() functions to automatically add curved trend datasets
+- Trend lines displayed as dashed curves with 70% opacity of the original color
 - Applied to both system monitoring (Reporter.ps1) and process monitoring (Reporter_for_Process.ps1)
-**Features**:
-- Automatic trend calculation for all valid data points
+**Mathematical Features**:
+- Polynomial regression using least squares method for optimal curve fitting
+- Adaptive degree selection based on data size (minimum degree 2, maximum degree 3)
+- Gaussian elimination for numerically stable coefficient solving
+- Handles non-linear performance patterns, acceleration/deceleration phases
+**Visual Features**:
+- Curved trend lines that follow actual data patterns
 - Visual distinction using borderDash: [5, 5] pattern
 - Transparent background to avoid interference with main data
 - Zero interaction points (pointRadius: 0) to maintain focus on main data
-**Benefits**: Enhanced data analysis capabilities, improved trend identification, better performance pattern recognition
+**Benefits**: Scientifically accurate trend analysis, better curve fitting for performance data, industry-standard approach for monitoring systems
 **Template**:
 ```javascript
-// Calculate trend line
-const trendData = calculateTrendLine(data);
+// Calculate polynomial trend line
+const trendData = calculateTrendLine(data); // Uses polynomial regression
 const trendDataset = {
     label: label + ' Trend',
     data: trendData,

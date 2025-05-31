@@ -205,3 +205,40 @@ User requested dash line trending functionality for all charts including future 
 - **Future-Proof**: All new charts will automatically include trend analysis
 - **Consistent Experience**: Unified trend visualization across all chart types
 - **Performance Impact**: Minimal computational overhead with efficient linear regression implementation
+[2025-05-31 13:39:30] - Enhanced Trend Lines with Polynomial Regression
+
+## Decision
+
+Upgraded trend line calculation from simple linear regression to polynomial regression for more scientifically accurate curve fitting in performance data analysis.
+
+## Rationale 
+
+User feedback indicated that straight linear trend lines were too simplistic for performance monitoring data. Performance metrics often exhibit non-linear patterns, acceleration/deceleration phases, and cyclical behaviors that require curved trend analysis. Polynomial regression is the standard scientific approach for trend analysis in performance monitoring and reporting systems.
+
+## Implementation Details
+
+**Mathematical Enhancement:**
+- Replaced linear regression with adaptive polynomial regression (degree 2-3)
+- Implemented least squares method using Vandermonde matrix approach
+- Added Gaussian elimination solver for polynomial coefficient calculation
+- Adaptive degree selection based on data size (more data = higher degree capability)
+
+**Scientific Accuracy:**
+- Polynomial regression better captures non-linear performance patterns
+- Handles performance acceleration/deceleration phases
+- More appropriate for system monitoring where metrics exhibit curved behaviors
+- Standard approach in performance analysis and scientific computing
+
+**Technical Implementation:**
+- Added polynomialRegression() function with matrix-based solver
+- Added gaussianElimination() for robust coefficient calculation  
+- Added evaluatePolynomial() for trend point generation
+- Maintained robustness with null data handling and numerical stability checks
+
+## Impact
+
+- **Scientific Accuracy**: Trend lines now follow actual data patterns with curves
+- **Better Analysis**: More accurate trend identification for performance patterns
+- **Industry Standard**: Aligns with scientific best practices for performance monitoring
+- **Future Compatibility**: Enhanced algorithm maintained for all future charts
+- **Robustness**: Numerical stability and error handling for edge cases

@@ -778,29 +778,108 @@ const chartOptions = {
   }
 };
 
-// Function to calculate linear regression trend line
+// Function to calculate polynomial regression trend line (more scientific approach)
 function calculateTrendLine(data) {
-    if (!data || data.length < 2) return [];
+    if (!data || data.length < 3) return [];
     
     const validData = data.map((val, idx) => ({ x: idx, y: val }))
                          .filter(point => point.y !== null && point.y !== undefined && !isNaN(point.y));
     
-    if (validData.length < 2) return [];
+    if (validData.length < 3) return [];
     
-    const n = validData.length;
-    const sumX = validData.reduce((sum, point) => sum + point.x, 0);
-    const sumY = validData.reduce((sum, point) => sum + point.y, 0);
-    const sumXY = validData.reduce((sum, point) => sum + (point.x * point.y), 0);
-    const sumXX = validData.reduce((sum, point) => sum + (point.x * point.x), 0);
+    // Use polynomial regression (degree 2 for curves, degree 3 for more complex patterns)
+    const degree = Math.min(3, Math.floor(validData.length / 10) + 2); // Adaptive degree based on data size
+    const coefficients = polynomialRegression(validData, degree);
     
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-    const intercept = (sumY - slope * sumX) / n;
+    if (!coefficients) return [];
     
-    // Generate trend line points for all data points (including null values)
+    // Generate curved trend line points
     return data.map((val, idx) => {
         if (val === null || val === undefined || isNaN(val)) return null;
-        return slope * idx + intercept;
+        return evaluatePolynomial(coefficients, idx);
     });
+}
+
+// Polynomial regression implementation using least squares method
+function polynomialRegression(data, degree) {
+    if (data.length <= degree) return null;
+    
+    const n = data.length;
+    const matrix = [];
+    const vector = [];
+    
+    // Build the normal equations matrix (Vandermonde-style)
+    for (let i = 0; i <= degree; i++) {
+        const row = [];
+        let sum = 0;
+        
+        for (let j = 0; j <= degree; j++) {
+            let powSum = 0;
+            for (const point of data) {
+                powSum += Math.pow(point.x, i + j);
+            }
+            row.push(powSum);
+        }
+        matrix.push(row);
+        
+        // Build the result vector
+        for (const point of data) {
+            sum += point.y * Math.pow(point.x, i);
+        }
+        vector.push(sum);
+    }
+    
+    // Solve the system using Gaussian elimination
+    return gaussianElimination(matrix, vector);
+}
+
+// Gaussian elimination solver for polynomial coefficients
+function gaussianElimination(matrix, vector) {
+    const n = matrix.length;
+    const augmented = matrix.map((row, i) => [...row, vector[i]]);
+    
+    // Forward elimination
+    for (let i = 0; i < n; i++) {
+        // Find pivot
+        let maxRow = i;
+        for (let k = i + 1; k < n; k++) {
+            if (Math.abs(augmented[k][i]) > Math.abs(augmented[maxRow][i])) {
+                maxRow = k;
+            }
+        }
+        [augmented[i], augmented[maxRow]] = [augmented[maxRow], augmented[i]];
+        
+        // Make all rows below this one 0 in current column
+        for (let k = i + 1; k < n; k++) {
+            if (Math.abs(augmented[i][i]) < 1e-10) continue; // Avoid division by zero
+            const factor = augmented[k][i] / augmented[i][i];
+            for (let j = i; j <= n; j++) {
+                augmented[k][j] -= factor * augmented[i][j];
+            }
+        }
+    }
+    
+    // Back substitution
+    const solution = new Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+        solution[i] = augmented[i][n];
+        for (let j = i + 1; j < n; j++) {
+            solution[i] -= augmented[i][j] * solution[j];
+        }
+        if (Math.abs(augmented[i][i]) < 1e-10) return null; // Singular matrix
+        solution[i] /= augmented[i][i];
+    }
+    
+    return solution;
+}
+
+// Evaluate polynomial at given x value
+function evaluatePolynomial(coefficients, x) {
+    let result = 0;
+    for (let i = 0; i < coefficients.length; i++) {
+        result += coefficients[i] * Math.pow(x, i);
+    }
+    return result;
 }
 
 // Function to create dataset with consistent styling
