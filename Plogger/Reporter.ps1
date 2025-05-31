@@ -1520,7 +1520,7 @@ $reportContent = @"
         const powerDatasets = [];
         // Add CPU power draw if available
         if (cpuPowerDraw.some(val => val !== null && val !== undefined)) {
-            powerDatasets.push({ label: 'CPU Power Draw', data: cpuPowerDraw, borderColor: 'rgb(255, 99, 132)', backgroundColor: 'rgba(255, 99, 132, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
+            powerDatasets.push({ label: 'CPU Power Draw (Experimental)', data: cpuPowerDraw, borderColor: 'rgb(255, 99, 132)', backgroundColor: 'rgba(255, 99, 132, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
         }
         // Add GPU power draw if available
         if (gpuPowerDraw.some(val => val !== null && val !== undefined)) {
