@@ -108,3 +108,17 @@ This file tracks the project's current status, including recent changes, current
 * Maintained compatibility with existing Reporter components and CSV structure
 * Increased data collection frequency by 50% for more detailed performance monitoring
 * Enhanced monitoring capability for short-term performance events and anomalies
+[2025-05-31 20:51:39] - CPU Usage Correction Factor Implementation
+## Current Focus
+
+* Implemented CPU usage correction factor (1.5x) in Process Usage Report to align with Windows Task Manager values
+* Fixed discrepancy where process CPU readings showed 70% of expected Task Manager values
+* Applied correction to both legacy and new CSV format processing pipelines
+* Ensured aggregated process calculations inherit corrected individual process values
+
+## Recent Changes
+
+* Modified Reporter_for_Process.ps1 to apply 1.5x multiplier to all CPU percentage calculations
+* Updated both raw CPU data conversion and legacy format processing with correction factor
+* Enhanced processing messages to indicate CPU correction factor application
+* Maintained backward compatibility with existing CSV files while providing accurate CPU readings

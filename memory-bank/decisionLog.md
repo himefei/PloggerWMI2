@@ -418,3 +418,50 @@ User requested increased logging frequency to capture performance metrics more f
 - **Better Trend Analysis**: Additional data points improve polynomial regression accuracy
 - **Improved Diagnostics**: Capture shorter performance spikes and anomalies
 - **Responsive Monitoring**: Faster detection of performance changes
+[2025-05-31 20:51:22] - CPU Usage Correction Factor Implementation
+
+## Decision
+
+Implemented 1.5x correction factor for CPU usage values in Process Usage Report to align with Windows Task Manager readings.
+
+## Rationale 
+
+User identified discrepancy where CPU usage captured in process logs shows approximately 70% of what Windows Task Manager displays. The process data comes from Task Manager's Details tab but requires correction to match the standard Task Manager CPU usage values that users expect to see.
+
+## Implementation Details
+
+**Technical Changes:**
+- Modified Reporter_for_Process.ps1 to apply 1.5x multiplier to all CPU percentage calculations
+- Applied correction to both legacy format (existing CPUPercent) and new format (calculated from CPUPercentRaw/LogicalCoreCount)
+- Correction applied early in data processing pipeline before aggregation and chart generation
+- Updated processing messages to indicate CPU correction factor application
+
+**Processing Flow:**
+```powershell
+# New format: Apply correction after core count division
+$correctedCPU = ($rawCPU / $coreCount) * 1.5
+
+# Legacy format: Apply correction to existing values  
+$correctedCPU = $currentCPU * 1.5
+```
+
+**Affected Areas:**
+- Individual process CPU calculations for charts and statistics
+- Aggregated process CPU calculations (automatically inherit corrected values)
+- CPU-based sorting and color coding in dropdown menus
+- All CPU trend line calculations (use corrected base data)
+
+## Impact
+
+- **Accurate Reporting**: CPU usage values now match Windows Task Manager expectations
+- **User Experience**: Eliminates confusion from discrepant CPU readings
+- **Consistency**: Process monitoring aligns with system monitoring standards
+- **Retroactive**: Works with both existing CSV files and newly generated data
+- **Preserved Aggregation**: Aggregated processes automatically reflect corrected individual values
+
+## Benefits
+
+- **User Familiarity**: CPU values match what users see in Task Manager
+- **Diagnostic Accuracy**: More reliable performance analysis and troubleshooting
+- **Consistent Scaling**: All CPU-related visualizations and statistics use corrected values
+- **Backward Compatible**: Handles both old and new CSV format with appropriate correction

@@ -125,22 +125,38 @@ $hasNewFormat = $reqNew | ForEach-Object { $data[0].PSObject.Properties.Name.Con
 
 if ($hasOldFormat -eq 0) {
     Write-Host "Processing legacy process data format..."
+    Write-Host "Applying CPU correction factor (1.5x) to legacy data..."
+    # Apply 1.5x correction factor to legacy CPU data to match Task Manager values
+    $data = $data | ForEach-Object {
+        try {
+            $currentCPU = [double]$_.CPUPercent
+            $correctedCPU = $currentCPU * 1.5
+            $_.CPUPercent = [math]::Round($correctedCPU, 2)
+        } catch {
+            $_.CPUPercent = 0
+        }
+        $_
+    }
     $useNewFormat = $false
 } elseif ($hasNewFormat -eq 0) {
     Write-Host "Processing optimized process data format..."
     $useNewFormat = $true
     
-    # Convert raw CPU data to calculated percentages
-    Write-Host "Converting raw CPU data to percentages..."
+    # Convert raw CPU data to calculated percentages and apply 1.5x correction factor
+    Write-Host "Converting raw CPU data to percentages and applying CPU correction factor (1.5x)..."
     $data = $data | ForEach-Object {
         if ($_.CPUPercentRaw -and $_.LogicalCoreCount) {
             try {
                 $rawCPU = [double]$_.CPUPercentRaw
                 $coreCount = [double]$_.LogicalCoreCount
                 if ($coreCount -gt 0) {
-                    $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($rawCPU / $coreCount, 2)) -Force
+                    # Apply 1.5x correction factor to match Task Manager values
+                    $correctedCPU = ($rawCPU / $coreCount) * 1.5
+                    $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($correctedCPU, 2)) -Force
                 } else {
-                    $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($rawCPU, 2)) -Force
+                    # Apply 1.5x correction factor to match Task Manager values
+                    $correctedCPU = $rawCPU * 1.5
+                    $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($correctedCPU, 2)) -Force
                 }
             } catch {
                 $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value 0 -Force
