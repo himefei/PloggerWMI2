@@ -328,7 +328,9 @@ function Get-MetricStatistics {
         
         [string]$Label = $PropertyName,
         
-        [string]$Unit = ""
+        [string]$Unit = "",
+        
+        [switch]$CapAt100
     )
     
     # Extract numeric values, handling potential non-numeric or empty values
@@ -338,7 +340,13 @@ function Get-MetricStatistics {
             $null
         } else {
             try {
-                [double]$value
+                $parsedValue = [double]$value
+                # Cap at 100% if requested (for CPU usage)
+                if ($CapAt100 -and $parsedValue -gt 100) {
+                    100.0
+                } else {
+                    $parsedValue
+                }
             } catch {
                 $null # Ignore conversion errors for individual values
             }
@@ -737,7 +745,7 @@ $statsTableRows = [System.Collections.Generic.List[string]]::new()
 
 # Define metrics to summarize (use CPUUsagePercent)
 $metricsToSummarize = @(
-    @{ Name = 'CPUUsagePercent'; Label = 'CPU Usage'; Unit = '%' }
+    @{ Name = 'CPUUsagePercent'; Label = 'CPU Usage'; Unit = '%'; CapAt100 = $true }
     @{ Name = 'CPURealTimeClockSpeedMHz'; Label = 'CPU Real-Time Clock Speed'; Unit = 'MHz' }
     @{ Name = 'RAMUsedMB'; Label = 'RAM Used'; Unit = 'MB' }
     @{ Name = 'DiskIOTransferSec'; Label = 'Disk I/O'; Unit = 'Transfers/sec' }
@@ -756,7 +764,18 @@ $metricsToSummarize = @(
 
 foreach ($metricInfo in $metricsToSummarize) {
     if ($data[0].PSObject.Properties.Name -contains $metricInfo.Name) {
-        $stats = Get-MetricStatistics -Data $data -PropertyName $metricInfo.Name -Label $metricInfo.Label -Unit $metricInfo.Unit
+        $statsParams = @{
+            Data = $data
+            PropertyName = $metricInfo.Name
+            Label = $metricInfo.Label
+            Unit = $metricInfo.Unit
+        }
+        # Add CapAt100 parameter if specified
+        if ($metricInfo.CapAt100) {
+            $statsParams.CapAt100 = $true
+        }
+        
+        $stats = Get-MetricStatistics @statsParams
         if ($stats.Available) {
             $statsTableRows.Add("<tr><td>$($stats.Label)</td><td>$($stats.Average) $($stats.Unit)</td><td>$($stats.Median) $($stats.Unit)</td><td>$($stats.Minimum) $($stats.Unit)</td><td>$($stats.Maximum) $($stats.Unit)</td></tr>")
         } else {
@@ -1180,7 +1199,9 @@ $reportContent = @"
 
         rawData.forEach((row, index) => {
             timestamps.push(row.Timestamp);
-            cpuUsage.push(parseNumeric(row.CPUUsagePercent));
+            // Cap CPU usage at 100% to avoid confusion
+            const cpuValue = parseNumeric(row.CPUUsagePercent);
+            cpuUsage.push(cpuValue !== null ? Math.min(cpuValue, 100) : null);
             cpuClockSpeed.push(parseNumeric(row.CPURealTimeClockSpeedMHz));
             ramUsed.push(parseNumeric(row.RAMUsedMB));
             diskIO.push(parseNumeric(row.DiskIOTransferSec));

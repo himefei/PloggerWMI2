@@ -67,3 +67,16 @@ This file tracks the project's current status, including recent changes, current
 * Added trend lines to all process charts: CPU, RAM, Read I/O, Write I/O, Dedicated VRAM, and Shared VRAM
 * Applied the same scientific polynomial regression pattern established in systemPatterns.md
 * Maintained consistent visual styling with dashed lines and 70% opacity trend colors
+[2025-05-31 17:17:00] - CPU Usage Percentage Cap Implementation
+## Current Focus
+
+* Implemented CPU usage percentage cap at 100% to eliminate viewer confusion
+* Applied cap to both chart visualization and overall statistics summary
+* Enhanced Get-MetricStatistics function with optional CapAt100 parameter
+
+## Recent Changes
+
+* Added CPU usage cap in JavaScript chart data processing (Math.min(cpuValue, 100))
+* Enhanced Get-MetricStatistics function with CapAt100 switch parameter
+* Updated CPU Usage metric processing to use CapAt100 parameter in statistics summary
+* Maintained data integrity while improving user experience and reducing confusion
