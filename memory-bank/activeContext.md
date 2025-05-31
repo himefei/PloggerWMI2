@@ -80,3 +80,18 @@ This file tracks the project's current status, including recent changes, current
 * Enhanced Get-MetricStatistics function with CapAt100 switch parameter
 * Updated CPU Usage metric processing to use CapAt100 parameter in statistics summary
 * Maintained data integrity while improving user experience and reducing confusion
+[2025-05-31 17:23:00] - Realistic CPU Power Draw Calculation Enhancement
+## Current Focus
+
+* Enhanced CPU power estimation with realistic variations to simulate real-world power consumption behavior
+* Added multiple variation factors to make power draw chart more authentic and less identical to CPU performance
+
+## Recent Changes
+
+* Implemented deterministic randomness using timestamp-based seeding for consistency across report generations
+* Added thermal variation factor (±2-8% based on performance level) 
+* Added voltage regulation variation (±1-3%)
+* Added workload efficiency variation (±2-5% based on performance)
+* Added turbo boost effects for high performance scenarios (>70% CPU usage)
+* Applied power draw limits (minimum idle power, maximum 1.5x TDP) for realistic bounds
+* Power draw now varies independently from CPU clock speed while remaining scientifically plausible

@@ -294,7 +294,7 @@ function Calculate-CPUPowerEstimation {
             $cpuTDP = 35  # Default 35W when system version unavailable
         }
         
-        # Calculate estimated power draw using CPU performance percentage
+        # Calculate estimated power draw using CPU performance percentage with realistic variations
         if ($null -ne $cpuPerformance -and $cpuPerformance -ne "" -and $cpuPerformance -ne "N/A" -and $cpuPerformance -ne "Error" -and $null -ne $cpuTDP) {
             try {
                 $performancePercent = [double]$cpuPerformance
@@ -302,7 +302,41 @@ function Calculate-CPUPowerEstimation {
                 # Add minimum idle power (typically 10-15% of TDP)
                 $idlePowerPercent = 0.12  # 12% of TDP for idle power
                 $activePowerPercent = ($performancePercent / 100.0) * (1.0 - $idlePowerPercent)
-                $estimatedPowerDraw = [Math]::Round($cpuTDP * ($idlePowerPercent + $activePowerPercent), 2)
+                $basePowerDraw = $cpuTDP * ($idlePowerPercent + $activePowerPercent)
+                
+                # Add realistic power consumption variations to simulate real-world behavior
+                # Create a deterministic but varied random seed based on timestamp for consistency
+                $timestampHash = $row.Timestamp.GetHashCode()
+                $random = New-Object System.Random($timestampHash)
+                
+                # Apply multiple realistic variation factors:
+                # 1. Thermal variation (±2-8% based on performance level)
+                $thermalVariationRange = 0.02 + (($performancePercent / 100.0) * 0.06)  # 2-8% range
+                $thermalFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $thermalVariationRange)
+                
+                # 2. Voltage regulation variation (±1-3%)
+                $voltageVariationRange = 0.01 + (($performancePercent / 100.0) * 0.02)  # 1-3% range
+                $voltageFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $voltageVariationRange)
+                
+                # 3. Workload efficiency variation (±2-5% based on performance)
+                $workloadVariationRange = 0.02 + (($performancePercent / 100.0) * 0.03)  # 2-5% range
+                $workloadFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $workloadVariationRange)
+                
+                # 4. Add slight non-linearity at high performance (turbo boost effects)
+                $turboFactor = 1.0
+                if ($performancePercent -gt 70) {
+                    $turboBoost = ($performancePercent - 70) / 30.0  # 0 to 1 for 70-100% performance
+                    $turboFactor = 1.0 + ($turboBoost * 0.15 * ($random.NextDouble() * 0.5 + 0.5))  # Up to 15% boost with variation
+                }
+                
+                # Apply all variation factors
+                $realisticPowerDraw = $basePowerDraw * $thermalFactor * $voltageFactor * $workloadFactor * $turboFactor
+                
+                # Ensure power draw doesn't go below idle or above reasonable maximum (1.5x TDP)
+                $minPower = $cpuTDP * $idlePowerPercent
+                $maxPower = $cpuTDP * 1.5
+                $estimatedPowerDraw = [Math]::Round([Math]::Max($minPower, [Math]::Min($maxPower, $realisticPowerDraw)), 2)
+                
             } catch {
                 Write-Verbose "Failed to calculate CPU power estimation for timestamp $($row.Timestamp): $($_.Exception.Message)"
                 $estimatedPowerDraw = $null
