@@ -961,93 +961,6 @@ function createTrendDataset(label, data, color) {
 // Chart instances
 let charts = {};
 
-// Function to update all charts for a selected process
-function updateAllCharts(processName) {
-  const container = document.getElementById('chartsContainer');
-  if (!processName) {
-    container.style.display = 'none';
-    return;
-  }
-  
-  container.style.display = 'block';
-  const d = processData[processName];
-  
-  // destroy existing charts
-  Object.values(charts).forEach(c=>c.destroy());
-  charts = {};
-  
-  // render all charts with enhanced styling and trend lines
-  const cpuDatasets = [createDataset(processName, d.CPU, 'rgb(255, 99, 132)')];
-  const cpuTrend = createTrendDataset(processName, d.CPU, 'rgb(255, 99, 132)');
-  if (cpuTrend) cpuDatasets.push(cpuTrend);
-  
-  charts.cpu = new Chart(document.getElementById('cpuChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: cpuDatasets
-    },
-    options: chartOptions
-  });
-  
-  const ramDatasets = [createDataset(processName, d.RAM, 'rgb(54, 162, 235)')];
-  const ramTrend = createTrendDataset(processName, d.RAM, 'rgb(54, 162, 235)');
-  if (ramTrend) ramDatasets.push(ramTrend);
-  
-  charts.ram = new Chart(document.getElementById('ramChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: ramDatasets
-    },
-    options: chartOptions
-  });
-  
-  const readDatasets = [createDataset(processName, d.ReadIO, 'rgb(75, 192, 192)')];
-  const readTrend = createTrendDataset(processName, d.ReadIO, 'rgb(75, 192, 192)');
-  if (readTrend) readDatasets.push(readTrend);
-  
-  charts.read = new Chart(document.getElementById('readChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: readDatasets
-    },
-    options: chartOptions
-  });
-  
-  const writeDatasets = [createDataset(processName, d.WriteIO, 'rgb(255, 159, 64)')];
-  const writeTrend = createTrendDataset(processName, d.WriteIO, 'rgb(255, 159, 64)');
-  if (writeTrend) writeDatasets.push(writeTrend);
-  
-  charts.write = new Chart(document.getElementById('writeChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: writeDatasets
-    },
-    options: chartOptions
-  });
-  
-  // Add VRAM charts
-  charts.dedicatedVram = new Chart(document.getElementById('dedicatedVramChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [createDataset(processName, d.DedicatedVRAM, 'rgb(153, 102, 255)')]
-    },
-    options: chartOptions
-  });
-  
-  charts.sharedVram = new Chart(document.getElementById('sharedVramChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [createDataset(processName, d.SharedVRAM, 'rgb(201, 203, 207)')]
-    },
-    options: chartOptions
-  });
-}
 
 // CPU selection listener
 sel.addEventListener('change', () => {
@@ -1173,8 +1086,7 @@ document.querySelectorAll('.chart-container').forEach(container => {
   attachDragListeners(container);
 });
 
-// Enhanced updateAllCharts function with chart storage
-const originalUpdateAllCharts = updateAllCharts;
+// Enhanced updateAllCharts function with chart storage and trend lines
 updateAllCharts = function(processName) {
   const container = document.getElementById('chartsContainer');
   if (!processName) {
@@ -1189,63 +1101,87 @@ updateAllCharts = function(processName) {
   Object.values(charts).forEach(c=>c.destroy());
   charts = {};
   
-  // render all charts with enhanced styling and store configs
+  // render all charts with enhanced styling, trend lines, and store configs
+  const cpuDatasets = [createDataset(processName, d.CPU, 'rgb(255, 99, 132)')];
+  const cpuTrend = createTrendDataset(processName, d.CPU, 'rgb(255, 99, 132)');
+  if (cpuTrend) cpuDatasets.push(cpuTrend);
+  
   charts.cpu = new Chart(document.getElementById('cpuChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.CPU, 'rgb(255, 99, 132)')]
+      datasets: cpuDatasets
     },
     options: chartOptions
   });
   storeChartConfig('cpuChart', charts.cpu);
   
+  const ramDatasets = [createDataset(processName, d.RAM, 'rgb(54, 162, 235)')];
+  const ramTrend = createTrendDataset(processName, d.RAM, 'rgb(54, 162, 235)');
+  if (ramTrend) ramDatasets.push(ramTrend);
+  
   charts.ram = new Chart(document.getElementById('ramChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.RAM, 'rgb(54, 162, 235)')]
+      datasets: ramDatasets
     },
     options: chartOptions
   });
   storeChartConfig('ramChart', charts.ram);
   
+  const readDatasets = [createDataset(processName, d.ReadIO, 'rgb(75, 192, 192)')];
+  const readTrend = createTrendDataset(processName, d.ReadIO, 'rgb(75, 192, 192)');
+  if (readTrend) readDatasets.push(readTrend);
+  
   charts.read = new Chart(document.getElementById('readChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.ReadIO, 'rgb(75, 192, 192)')]
+      datasets: readDatasets
     },
     options: chartOptions
   });
   storeChartConfig('readChart', charts.read);
   
+  const writeDatasets = [createDataset(processName, d.WriteIO, 'rgb(255, 159, 64)')];
+  const writeTrend = createTrendDataset(processName, d.WriteIO, 'rgb(255, 159, 64)');
+  if (writeTrend) writeDatasets.push(writeTrend);
+  
   charts.write = new Chart(document.getElementById('writeChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.WriteIO, 'rgb(255, 159, 64)')]
+      datasets: writeDatasets
     },
     options: chartOptions
   });
   storeChartConfig('writeChart', charts.write);
   
-  // Add VRAM charts
+  // Add VRAM charts with trend lines
+  const dedicatedVramDatasets = [createDataset(processName, d.DedicatedVRAM, 'rgb(153, 102, 255)')];
+  const dedicatedVramTrend = createTrendDataset(processName, d.DedicatedVRAM, 'rgb(153, 102, 255)');
+  if (dedicatedVramTrend) dedicatedVramDatasets.push(dedicatedVramTrend);
+  
   charts.dedicatedVram = new Chart(document.getElementById('dedicatedVramChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.DedicatedVRAM, 'rgb(153, 102, 255)')]
+      datasets: dedicatedVramDatasets
     },
     options: chartOptions
   });
   storeChartConfig('dedicatedVramChart', charts.dedicatedVram);
   
+  const sharedVramDatasets = [createDataset(processName, d.SharedVRAM, 'rgb(201, 203, 207)')];
+  const sharedVramTrend = createTrendDataset(processName, d.SharedVRAM, 'rgb(201, 203, 207)');
+  if (sharedVramTrend) sharedVramDatasets.push(sharedVramTrend);
+  
   charts.sharedVram = new Chart(document.getElementById('sharedVramChart').getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: [createDataset(processName, d.SharedVRAM, 'rgb(201, 203, 207)')]
+      datasets: sharedVramDatasets
     },
     options: chartOptions
   });
