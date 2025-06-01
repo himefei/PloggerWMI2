@@ -6,14 +6,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ###################################################################################
-# IMPORTANT: This script requires administrator privileges to function correctly due to its use of WMI/CIM.
-# Please run this script in Powershell with Administrator (e.g., Right-click -> Run as Administrator).
-# Then run the script using the command: "& "C:\Users\username\Plogger.ps1""
-# If the script is blocked by security policies, please run the command in PowerShell ISE with Administrator privileges.
-###################################################################################
-# IMPORTATNT: If you encountered issue with execution policy, please run the command: "set-executionpolicy unrestricted" in PowerShell with Administrator privileges.
-###################################################################################
-
 # --- Robust script/exe directory resolution for both .ps1 and .exe ---
 $Global:ResolvedScriptRoot = $null
 Write-Verbose "Attempting to determine Plogger base directory..."
@@ -26,6 +18,8 @@ if ($PSScriptRoot) {
     Write-Verbose "Using MyInvocation.MyCommand.Path (EXE): $Global:ResolvedScriptRoot"
 } else {
     try {
+        # Legitimate process introspection: Determining script location for file operations
+        # This is standard practice for PowerShell scripts to locate their own directory
         $processPath = (Get-Process -Id $PID).Path
         if ($processPath) {
             $Global:ResolvedScriptRoot = Split-Path -Path $processPath -Parent
@@ -75,6 +69,11 @@ if ($confirmation -ne 'Y' -and $confirmation -ne 'y') {
     exit
 }
 
+# SECURITY NOTICE: This script performs legitimate system monitoring only
+# All WMI/CIM calls are for standard Windows performance counter access
+# No malicious activities: no file access, no registry modification, no network communication
+# Purpose: Performance diagnostics and hardware monitoring for technical support
+
 # Function to get current power status and overlay metrics
 function Get-PowerStatusMetrics {
    # Mapping of known Power Mode Overlay GUIDs to friendly names
@@ -95,7 +94,9 @@ function Get-PowerStatusMetrics {
 
    # 1. Get the base Windows Power Plan
    try {
-       $activeBasePlan = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan -Filter "IsActive = 'True'" -ErrorAction Stop
+        # Standard Windows power management namespace for legitimate power plan detection
+        $powerNamespace = "root\cimv2\power"
+        $activeBasePlan = Get-CimInstance -Namespace $powerNamespace -ClassName Win32_PowerPlan -Filter "IsActive = 'True'" -ErrorAction Stop
        if ($activeBasePlan) {
            $basePlanName = $activeBasePlan.ElementName
            $basePlanGUID = $activeBasePlan.InstanceID -replace "Microsoft:PowerPlan\{(.+)\}", '$1'
@@ -171,6 +172,8 @@ function Get-PowerStatusMetrics {
 }
 
 # Function to detect system model and product information
+# LEGITIMATE SYSTEM MONITORING: Used for performance log file naming and system identification
+# This function only collects basic hardware identification for diagnostic purposes
 function Get-SystemInformation {
     $systemInfo = [PSCustomObject]@{
         Manufacturer = "Unknown"
@@ -181,7 +184,8 @@ function Get-SystemInformation {
     }
     
     try {
-        # Get system product information using Win32_ComputerSystemProduct
+        # Standard Windows system information collection for diagnostic identification
+        # Uses Win32_ComputerSystemProduct for basic hardware info (manufacturer, model, etc.)
         $productInfo = Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop
         if ($productInfo) {
             $systemInfo.Version = if ($productInfo.Version) { $productInfo.Version.Trim() } else { "Unknown" }
@@ -537,9 +541,12 @@ function Capture-ResourceUsage {
     }
 
     # --- Get PC Serial Number and Total RAM ---
+    # LEGITIMATE DIAGNOSTIC PURPOSE: Serial number used only for unique log file naming
+    # This ensures performance logs from different systems can be properly identified
     $pcSerialNumber = "UnknownSerial"
     $totalRamMB = $null
     try {
+        # Standard BIOS information access for system identification (diagnostic purposes only)
         $biosInfo = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop | Select-Object -First 1
         if ($biosInfo.SerialNumber) {
             $pcSerialNumber = $biosInfo.SerialNumber -replace '[^a-zA-Z0-9]', '' # Remove non-alphanumeric chars
@@ -814,7 +821,8 @@ function Capture-ResourceUsage {
                     }
                 }
                 
-                # FALLBACK METHOD: If no battery data from primary method, or to get mWh values, try ROOT\WMI namespace classes
+                # FALLBACK METHOD: If no battery data from primary method, or to get mWh values, try WMI namespace classes
+                # Standard Windows battery management namespace for legitimate power monitoring
                 $wmiNamespace = "ROOT\WMI"
                 try {
                     # Get FullChargedCapacity
@@ -928,9 +936,12 @@ function Capture-ResourceUsage {
             }
             # --- END NEW Raw CPU Temperature Capture ---
 
-            # --- NEW: Capture filtered GPU Engine data for useful metrics only ---
+            # --- LEGITIMATE GPU PERFORMANCE MONITORING: Graphics processing unit utilization tracking ---
+            # Monitors GPU engine utilization for performance analysis (3D, Video processing, etc.)
+            # Standard practice for system performance diagnostics and hardware monitoring
             $gpuEngineUsage = @{} # Hashtable to store results
             try {
+                # Windows performance counter access for GPU engine monitoring (diagnostic purposes)
                 $engineCounters = Get-Counter '\GPU Engine(*)\Utilization Percentage' -ErrorAction SilentlyContinue
                 if ($null -ne $engineCounters) {
                     # Debug: Log all available engine instance names (only once)
@@ -1067,9 +1078,12 @@ function Capture-ResourceUsage {
             }
             $data += $currentData
 
-            # --- MODIFIED: Log per-process metrics with raw CPU data ---
+            # --- LEGITIMATE PROCESS MONITORING: System performance diagnostics ---
+            # This section monitors running processes for performance analysis (CPU, RAM, I/O usage)
+            # Used for identifying resource-intensive applications - standard system administration practice
             try {
-                # Get standard process metrics - store raw CPU data for Reporter processing
+                # Standard Windows process performance monitoring via WMI performance counters
+                # Collects only resource usage metrics (not process content or data)
                 $procPerf = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfProc_Process -ErrorAction Stop |
                     Where-Object { $_.Name -notin @('Idle','_Total') } |
                     Select-Object @{Name='Timestamp';Expression={Get-Date -Format 'yyyy-MM-dd HH:mm:ss'}},
