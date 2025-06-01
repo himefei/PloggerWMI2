@@ -414,110 +414,6 @@ function Get-NVIDIAMetrics {
     return $nvidiaMetrics
 }
 
-# Function to get Intel GPU metrics using Intel GPU tools
-function Get-IntelMetrics {
-    param (
-        [Parameter(Mandatory=$true)]
-        [object]$GPUInfo
-    )
-    
-    $intelMetrics = [PSCustomObject]@{
-        Temperature = $null
-        FanSpeed = $null
-        MemoryUsedMB = $null
-        MemoryTotalMB = $null
-        MemoryUtilization = $null
-        GPUUtilization = $null
-        PowerDraw = $null
-        Available = $false
-    }
-    
-    if (-not $GPUInfo.HasIntel) {
-        return $intelMetrics
-    }
-    
-    try {
-        # Check for Intel GPU monitoring tools (xpu-smi or xpumcli)
-        $intelTool = $null
-        $toolArgs = ""
-        
-        # Try to find xpu-smi first (newer tool)
-        $xpuSmi = Get-Command "xpu-smi" -ErrorAction SilentlyContinue
-        if ($xpuSmi) {
-            $intelTool = $xpuSmi.Source
-            $toolArgs = "dump -d 0 -m 0,1,5,18,19"  # Memory, temperature, power metrics
-        } else {
-            # Try xpumcli (older tool)
-            $xpumCli = Get-Command "xpumcli" -ErrorAction SilentlyContinue
-            if ($xpumCli) {
-                $intelTool = $xpumCli.Source
-                $toolArgs = "dump -d 0 -m 0,1,5,18,19"
-            } else {
-                # Try common installation paths for Intel GPU tools
-                $commonPaths = @(
-                    "${env:ProgramFiles}\Intel\oneAPI\Level-Zero\bin\xpu-smi.exe",
-                    "${env:ProgramFiles(x86)}\Intel\oneAPI\Level-Zero\bin\xpu-smi.exe",
-                    "${env:ProgramFiles}\Intel\Level-Zero\bin\xpu-smi.exe",
-                    "${env:ProgramFiles}\Intel\GPU\bin\xpumcli.exe",
-                    "${env:ProgramFiles(x86)}\Intel\GPU\bin\xpumcli.exe"
-                )
-                
-                foreach ($path in $commonPaths) {
-                    if (Test-Path $path) {
-                        $intelTool = $path
-                        if ($path -like "*xpu-smi*") {
-                            $toolArgs = "dump -d 0 -m 0,1,5,18,19"
-                        } else {
-                            $toolArgs = "dump -d 0 -m 0,1,5,18,19"
-                        }
-                        break
-                    }
-                }
-            }
-        }
-        
-        if ($intelTool) {
-            # Execute Intel GPU monitoring tool
-            $intelOutput = & $intelTool $toolArgs.Split(' ') 2>$null
-            
-            if ($intelOutput) {
-                # Parse Intel GPU tool output (format may vary between tools)
-                foreach ($line in $intelOutput) {
-                    if ($line -match "GPU Temperature.*?(\d+)") {
-                        $intelMetrics.Temperature = [int]$matches[1]
-                    }
-                    elseif ($line -match "Memory Used.*?(\d+)") {
-                        $intelMetrics.MemoryUsedMB = [int]$matches[1]
-                    }
-                    elseif ($line -match "Memory Total.*?(\d+)") {
-                        $intelMetrics.MemoryTotalMB = [int]$matches[1]
-                    }
-                    elseif ($line -match "GPU Utilization.*?(\d+)") {
-                        $intelMetrics.GPUUtilization = [int]$matches[1]
-                    }
-                    elseif ($line -match "Power.*?(\d+\.?\d*)") {
-                        $intelMetrics.PowerDraw = [float]$matches[1]
-                    }
-                }
-                
-                # Calculate memory utilization if we have both values
-                if ($intelMetrics.MemoryUsedMB -and $intelMetrics.MemoryTotalMB -and $intelMetrics.MemoryTotalMB -gt 0) {
-                    $intelMetrics.MemoryUtilization = [math]::Round(($intelMetrics.MemoryUsedMB / $intelMetrics.MemoryTotalMB) * 100, 2)
-                }
-                
-                $intelMetrics.Available = $true
-                Write-Verbose "Intel GPU metrics captured: Temp=$($intelMetrics.Temperature)°C, GPU=$($intelMetrics.GPUUtilization)%"
-            }
-        } else {
-            Write-Verbose "Intel GPU monitoring tools (xpu-smi/xpumcli) not found. Intel GPU detailed metrics will not be available."
-        }
-    } catch {
-        Write-Warning "Failed to get Intel GPU metrics: $($_.Exception.Message)"
-    }
-    
-    return $intelMetrics
-}
-
 # Function to capture hardware resource usage
 function Capture-ResourceUsage {
     param (
@@ -1006,14 +902,10 @@ function Capture-ResourceUsage {
 
             # --- NEW: Vendor-Specific GPU Metrics Collection ---
             $nvidiaGPUMetrics = $null
-            $intelGPUMetrics = $null
+            # NOTE: Intel GPU detailed metrics removed - consumer systems don't have monitoring tools pre-installed
             
             if ($script:gpuInfo.HasNVIDIA) {
                 $nvidiaGPUMetrics = Get-NVIDIAMetrics -GPUInfo $script:gpuInfo
-            }
-            
-            if ($script:gpuInfo.HasIntel) {
-                $intelGPUMetrics = Get-IntelMetrics -GPUInfo $script:gpuInfo
             }
             # --- END Vendor-Specific GPU Metrics ---
 
@@ -1062,14 +954,8 @@ function Capture-ResourceUsage {
                 NVIDIAGPUMemoryUtilization    = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.MemoryUtilization } else { $null }
                 NVIDIAGPUUtilization          = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.GPUUtilization } else { $null }
                 NVIDIAGPUPowerDraw            = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.PowerDraw } else { $null }
-                # Intel GPU Metrics
-                IntelGPUTemperature           = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.Temperature } else { $null }
-                IntelGPUFanSpeed              = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.FanSpeed } else { $null }
-                IntelGPUMemoryUsed_MB         = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.MemoryUsedMB } else { $null }
-                IntelGPUMemoryTotal_MB        = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.MemoryTotalMB } else { $null }
-                IntelGPUMemoryUtilization     = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.MemoryUtilization } else { $null }
-                IntelGPUUtilization           = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.GPUUtilization } else { $null }
-                IntelGPUPowerDraw             = if ($intelGPUMetrics -and $intelGPUMetrics.Available) { $intelGPUMetrics.PowerDraw } else { $null }
+                # Intel GPU Metrics - REMOVED: Consumer systems don't have Intel GPU monitoring tools
+                # Basic Intel GPU detection still available via GPUHasIntel and GPUIntelName fields above
             }
             
             # Add GPU Engine metrics from the hashtable (only useful ones with values)

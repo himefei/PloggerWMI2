@@ -787,11 +787,8 @@ $metricsToSummarize = @(
     @{ Name = 'CPUPowerW'; Label = 'CPU Power'; Unit = 'W' }
     @{ Name = 'CPUPlatformPowerW'; Label = 'CPU Platform Power'; Unit = 'W' }
     @{ Name = 'NVIDIAGPUTemperature'; Label = 'NVIDIA GPU Temperature'; Unit = '&#176;C' }
-    @{ Name = 'IntelGPUTemperature'; Label = 'Intel GPU Temperature'; Unit = '&#176;C' }
     @{ Name = 'NVIDIAGPUMemoryUsed_MB'; Label = 'NVIDIA GPU VRAM Used'; Unit = 'MB' }
-    @{ Name = 'IntelGPUMemoryUsed_MB'; Label = 'Intel GPU Memory Used'; Unit = 'MB' }
     @{ Name = 'NVIDIAGPUUtilization'; Label = 'NVIDIA GPU Utilization'; Unit = '%' }
-    @{ Name = 'IntelGPUUtilization'; Label = 'Intel GPU Utilization'; Unit = '%' }
     @{ Name = 'NVIDIAGPUPowerDraw'; Label = 'NVIDIA GPU Power Draw'; Unit = 'W' }
     @{ Name = 'CPUEstimatedPowerDraw'; Label = 'CPU Estimated Power Draw'; Unit = 'W' }
 )
@@ -1253,8 +1250,6 @@ $reportContent = @"
             // Handle GPU temperature data
             if (row.hasOwnProperty('NVIDIAGPUTemperature')) {
                 gpuTemp.push(parseNumeric(row.NVIDIAGPUTemperature));
-            } else if (row.hasOwnProperty('IntelGPUTemperature')) {
-                gpuTemp.push(parseNumeric(row.IntelGPUTemperature));
             } else {
                 gpuTemp.push(null);
             }
@@ -1262,8 +1257,6 @@ $reportContent = @"
             // Handle GPU VRAM usage data
             if (row.hasOwnProperty('NVIDIAGPUMemoryUsed_MB')) {
                 gpuVramUsed.push(parseNumeric(row.NVIDIAGPUMemoryUsed_MB));
-            } else if (row.hasOwnProperty('IntelGPUMemoryUsed_MB')) {
-                gpuVramUsed.push(parseNumeric(row.IntelGPUMemoryUsed_MB));
             } else {
                 gpuVramUsed.push(null);
             }
@@ -1278,8 +1271,6 @@ $reportContent = @"
             // Handle GPU power draw data
             if (row.hasOwnProperty('NVIDIAGPUPowerDraw')) {
                 gpuPowerDraw.push(parseNumeric(row.NVIDIAGPUPowerDraw));
-            } else if (row.hasOwnProperty('IntelGPUPowerDraw')) {
-                gpuPowerDraw.push(parseNumeric(row.IntelGPUPowerDraw));
             } else {
                 gpuPowerDraw.push(null);
             }

@@ -122,3 +122,17 @@ This file tracks the project's current status, including recent changes, current
 * Updated both raw CPU data conversion and legacy format processing with correction factor
 * Enhanced processing messages to indicate CPU correction factor application
 * Maintained backward compatibility with existing CSV files while providing accurate CPU readings
+[2025-06-01 19:21:00] - Intel GPU Detailed Metrics Removal
+## Current Focus
+
+* Removed Intel GPU detailed monitoring functions (xpu-smi/xpumcli) due to consumer systems not having these tools pre-installed
+* Cleaned up HTML reports to remove Intel GPU temperature, memory usage, and utilization from statistics
+* Maintained basic Intel GPU detection for GPU Engine utilization monitoring (still functional)
+
+## Recent Changes
+
+* Removed Get-IntelMetrics function from Plogger.ps1 completely
+* Removed Intel GPU detailed metric fields from CSV data collection
+* Updated Reporter.ps1 to remove Intel GPU metrics from statistics configuration
+* Removed Intel GPU temperature, memory, and power draw from chart data collection
+* Added explanatory comments about Intel GPU monitoring removal
