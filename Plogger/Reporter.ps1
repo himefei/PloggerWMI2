@@ -23,7 +23,7 @@ function Select-CsvFile {
     }
 }
 
-# Function to convert raw temperature data to Celsius
+# Function to convert raw temperature data to Celsius with model-specific calibration
 function Convert-RawTemperatureToCelsius {
     param (
         [Parameter(Mandatory=$true)]
@@ -34,6 +34,32 @@ function Convert-RawTemperatureToCelsius {
     )
     
     $convertedTemps = @()
+    
+    # Get system version for model-specific temperature calibration
+    $systemVersion = $null
+    if ($Data.Count -gt 0 -and $Data[0].PSObject.Properties.Name -contains 'SystemVersion') {
+        $systemVersion = $Data[0].SystemVersion
+    }
+    
+    # Define model-specific temperature corrections (in Celsius)
+    $temperatureCorrections = @{
+        "ThinkPad P1" = -25  # ThinkPad P1 thermal zone reports ~25C higher than actual
+        # Add more models here as needed:
+        # "ThinkPad P16" = -15  # Example for future model corrections
+        # "ThinkPad X1 Carbon" = -10  # Example for future model corrections
+    }
+    
+    # Determine temperature correction for this system
+    $tempCorrection = 0
+    if ($null -ne $systemVersion -and $systemVersion -ne "" -and $systemVersion -ne "N/A" -and $systemVersion -ne "Unknown") {
+        foreach ($model in $temperatureCorrections.Keys) {
+            if ($systemVersion -match [regex]::Escape($model)) {
+                $tempCorrection = $temperatureCorrections[$model]
+                Write-Verbose "Applying temperature correction of $tempCorrection°C for model: $systemVersion"
+                break
+            }
+        }
+    }
     
     foreach ($row in $Data) {
         $rawValue = $row.$RawTempColumnName
@@ -56,6 +82,19 @@ function Convert-RawTemperatureToCelsius {
                     $convertedTemp = [math]::Round(($rawNumeric / 10.0) - 273.15, 3)
                 } catch {
                     $convertedTemp = $null
+                }
+            }
+            
+            # Apply model-specific temperature correction with safety bounds
+            if ($null -ne $convertedTemp -and $tempCorrection -ne 0) {
+                # Only apply correction if current temperature is below 97°C and above 60°C
+                # This prevents overcorrection at very high or low temperatures
+                if ($convertedTemp -lt 97 -and $convertedTemp -gt 60) {
+                    $convertedTemp = [math]::Round($convertedTemp + $tempCorrection, 3)
+                    # Ensure corrected temperature doesn't go below reasonable minimum
+                    if ($convertedTemp -lt 30) {
+                        $convertedTemp = [math]::Round($convertedTemp - $tempCorrection, 3) # Revert correction if result is too low
+                    }
                 }
             }
         }
@@ -1303,24 +1342,55 @@ $reportContent = @"
         let ramTotalGB = 0;
         let vramTotalGB = 0;
         
-        // Function to convert raw temperature to Celsius for charts
-        function convertRawTempToCelsius(rawValue) {
+        // Function to convert raw temperature to Celsius for charts with model-specific calibration
+        function convertRawTempToCelsius(rawValue, systemVersion) {
             if (rawValue === undefined || rawValue === null || rawValue === "" || rawValue === "N/A" || rawValue === "Error") {
                 return null;
             }
+            
+            let convertedTemp = null;
             
             if (typeof rawValue === 'string' && rawValue.startsWith('CELSIUS:')) {
                 // Already in Celsius from Win32_PerfFormattedData_Counters_ThermalZoneInformation
                 const tempStr = rawValue.substring(8); // Remove "CELSIUS:" prefix
                 const parsed = parseFloat(tempStr);
-                return isNaN(parsed) ? null : Math.round(parsed * 1000) / 1000; // 3 decimal places
+                convertedTemp = isNaN(parsed) ? null : Math.round(parsed * 1000) / 1000; // 3 decimal places
             } else {
                 // Raw value in tenths of Kelvin from MSAcpi_ThermalZoneTemperature
                 const parsed = parseFloat(rawValue);
                 if (isNaN(parsed)) return null;
                 // Convert from tenths of Kelvin to Celsius with higher precision
-                return Math.round(((parsed / 10.0) - 273.15) * 1000) / 1000; // 3 decimal places
+                convertedTemp = Math.round(((parsed / 10.0) - 273.15) * 1000) / 1000; // 3 decimal places
             }
+            
+            // Apply model-specific temperature corrections with safety bounds
+            if (convertedTemp !== null && systemVersion) {
+                const temperatureCorrections = {
+                    "ThinkPad P1": -25  // ThinkPad P1 thermal zone reports ~25C higher than actual
+                    // Add more models here as needed:
+                    // "ThinkPad P16": -15,  // Example for future model corrections
+                    // "ThinkPad X1 Carbon": -10  // Example for future model corrections
+                };
+                
+                for (const model in temperatureCorrections) {
+                    if (systemVersion.includes(model)) {
+                        const correction = temperatureCorrections[model];
+                        // Only apply correction if current temperature is below 97°C and above 60°C
+                        // This prevents overcorrection at very high or low temperatures
+                        if (convertedTemp < 97 && convertedTemp > 60) {
+                            const correctedTemp = convertedTemp + correction;
+                            // Ensure corrected temperature doesn't go below reasonable minimum (30°C)
+                            if (correctedTemp >= 30) {
+                                convertedTemp = Math.round(correctedTemp * 1000) / 1000;
+                            }
+                            // If correction would result in temp below 30°C, keep original reading
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            return convertedTemp;
         }
         const screenBrightness = [];
         const batteryPercentage = [];
@@ -1347,6 +1417,12 @@ $reportContent = @"
                     }
                 }
             });
+        }
+
+        // Get system version for temperature correction
+        let systemVersion = null;
+        if (rawData.length > 0 && rawData[0].hasOwnProperty('SystemVersion')) {
+            systemVersion = rawData[0].SystemVersion;
         }
 
         rawData.forEach((row, index) => {
@@ -1394,9 +1470,9 @@ $reportContent = @"
             
             diskIO.push(parseNumeric(row.DiskIOTransferSec));
             networkIO.push(parseNumeric(row.NetworkIOBytesSec));
-            // Handle both raw temperature data and legacy converted data
+            // Handle both raw temperature data and legacy converted data with model-specific correction
             if (row.hasOwnProperty('CPUTemperatureRaw')) {
-                cpuTemp.push(convertRawTempToCelsius(row.CPUTemperatureRaw));
+                cpuTemp.push(convertRawTempToCelsius(row.CPUTemperatureRaw, systemVersion));
             } else if (row.hasOwnProperty('CPUTemperatureC')) {
                 // Fallback for legacy data with pre-converted temperatures
                 cpuTemp.push(parseNumeric(row.CPUTemperatureC));

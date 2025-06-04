@@ -419,3 +419,61 @@ Status: ✅ COMPLETED
 - Reporter.ps1 Power Statistics section displays correct "Battery Design Capacity (mWh): [value] mWh" format
 - Cross-platform battery monitoring now consistent between ARM and x86/x64 Windows systems
 - Enhanced detection logic successfully utilizes BatteryCycleCount, MSBatteryClass, or Win32_PortableBattery as needed
+[2025-06-04 21:44:00] - CPU Temperature Calibration System for Lenovo Models
+## Completed Tasks
+
+* **Model-Specific Temperature Calibration**: Added systematic CPU temperature correction for specific Lenovo models with inaccurate thermal zone readings
+* **ThinkPad P1 Temperature Fix**: Implemented -25°C correction for ThinkPad P1 models which report temperatures ~25°C higher than actual
+* **Extensible Correction Framework**: Built flexible system to easily add temperature corrections for additional models as needed
+* **Dual-Environment Consistency**: Applied corrections in both PowerShell statistics calculations and JavaScript chart rendering
+
+## Key Features Implemented
+- Enhanced `Convert-RawTemperatureToCelsius` function with model-specific corrections
+- Dynamic system version detection for automatic correction application  
+- JavaScript temperature conversion function updated with same correction logic
+- Centralized correction table for easy maintenance and future model additions
+- Verbose logging to track when corrections are applied
+- Maintains backward compatibility with existing temperature data
+
+## Technical Implementation
+- **PowerShell Side**: Enhanced temperature conversion with `$temperatureCorrections` hashtable
+- **JavaScript Side**: Updated chart temperature processing with matching correction logic
+- **Model Detection**: Uses SystemVersion field to identify specific models requiring correction
+- **Correction Application**: Applied after base temperature conversion for consistency
+- **Future-Ready**: Simple hashtable structure allows easy addition of new model corrections
+
+## Implementation Benefits
+- Accurate CPU temperature reporting for ThinkPad P1 systems
+- Consistent temperature data across statistics tables and interactive charts
+- Reduced user confusion from inflated temperature readings
+- Scalable solution for addressing thermal zone inaccuracies in other Lenovo models
+- Non-breaking changes that maintain compatibility with existing data
+[2025-06-04 21:48:00] - CPU Temperature Calibration Safety Bounds Implementation
+## Completed Tasks
+
+* **Temperature Correction Safety Bounds**: Added intelligent range validation to prevent overcorrection in temperature calibration
+* **High Temperature Protection**: Corrections only applied when temperature is below 100°C to avoid interfering with thermal protection readings
+* **Low Temperature Protection**: Corrections only applied when temperature is above 60°C to prevent unrealistically low readings
+* **Minimum Temperature Validation**: Added 30°C minimum threshold to revert corrections that would result in impossibly low readings
+* **Dual-Environment Consistency**: Applied safety bounds in both PowerShell statistics and JavaScript chart processing
+
+## Enhanced Temperature Correction Logic
+- **Upper Bound (100°C)**: Preserves original readings at very high temperatures for thermal safety
+- **Lower Bound (60°C)**: Prevents correction application on already-low temperature readings
+- **Result Validation (30°C minimum)**: Reverts corrections that would create unrealistic sub-30°C readings
+- **Intelligent Application**: Only applies -25°C ThinkPad P1 correction within safe temperature ranges
+- **Fallback Protection**: Maintains original readings when corrections would be inappropriate
+
+## Technical Implementation
+- **PowerShell Side**: Enhanced correction logic with nested temperature validation
+- **JavaScript Side**: Matching safety bounds implementation for chart consistency  
+- **Range Logic**: `if ($convertedTemp -lt 100 -and $convertedTemp -gt 60)` validation
+- **Result Check**: Additional validation to ensure corrected temperature stays above 30°C
+- **Preservation Logic**: Original readings maintained when safety bounds are violated
+
+## Implementation Benefits
+- Intelligent correction prevents overcorrection at temperature extremes
+- Maintains thermal safety awareness by preserving high temperature readings
+- Avoids unrealistic low temperature reports from excessive correction
+- Robust protection against edge cases in temperature sensor readings
+- Consistent behavior across all report components (statistics and charts)

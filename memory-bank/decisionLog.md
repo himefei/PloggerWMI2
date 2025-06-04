@@ -767,3 +767,31 @@ $turboFactor = 1.0
 - Reduced "Data not available" occurrences in Power Statistics reports
 - Maintains ARM system compatibility while enhancing x86/x64 support
 - Future-extensible design for additional WMI class support
+[2025-06-04 21:45:00] - CPU Temperature Model-Specific Calibration Implementation
+**Decision**: Implemented model-specific CPU temperature calibration system in Reporter.ps1 to correct inaccurate thermal zone readings on specific Lenovo models
+
+**Problem**: 
+- ThinkPad P1 systems report CPU temperatures ~25°C higher than actual readings
+- WMI thermal zone data varies in accuracy across different Lenovo model lines
+- Users experiencing confusion from inflated temperature reports in monitoring data
+- Need systematic approach to handle thermal sensor calibration across model variants
+
+**Solution Implemented**:
+- Enhanced `Convert-RawTemperatureToCelsius` function with model-specific correction table
+- Added -25°C correction specifically for "ThinkPad P1" systems based on user feedback
+- Updated JavaScript temperature conversion function with matching correction logic
+- Implemented SystemVersion-based automatic model detection and correction application
+
+**Technical Architecture**:
+- **Correction Table**: Centralized hashtable mapping model names to temperature offsets
+- **Detection Logic**: Uses SystemVersion field with regex matching for reliable model identification
+- **Dual Implementation**: Applied in both PowerShell statistics and JavaScript chart rendering
+- **Extensible Design**: Simple structure for adding future model corrections
+- **Verbose Logging**: Tracks when corrections are applied for troubleshooting
+
+**Benefits**:
+- Accurate temperature reporting eliminates user confusion on ThinkPad P1 systems
+- Consistent temperature data across all report sections (statistics and charts)
+- Future-proof framework for addressing thermal calibration issues in other models
+- Non-breaking implementation maintains compatibility with existing CSV data
+- Easy maintenance through centralized correction definitions
