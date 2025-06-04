@@ -333,12 +333,8 @@ function Calculate-CPUPowerEstimation {
                 $workloadVariationRange = 0.02 + (($performancePercent / 100.0) * 0.03)  # 2-5% range
                 $workloadFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $workloadVariationRange)
                 
-                # 4. Add slight non-linearity at high usage (turbo boost effects) - trigger at >90% CPU usage
+                # No turbo boost factor - removed as it was too aggressive
                 $turboFactor = 1.0
-                if ($usagePercent -gt 90) {
-                    $turboBoost = ($usagePercent - 90) / 10.0  # 0 to 1 for 90-100% usage
-                    $turboFactor = 1.0 + ($turboBoost * 0.15 * ($random.NextDouble() * 0.5 + 0.5))  # Up to 15% boost with variation
-                }
                 
                 # Apply all variation factors
                 $realisticPowerDraw = $basePowerDraw * $thermalFactor * $voltageFactor * $workloadFactor * $turboFactor

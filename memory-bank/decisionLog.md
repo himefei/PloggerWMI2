@@ -684,7 +684,7 @@ This dual-metric approach delivers more realistic and reliable power consumption
 - **Below 7% CPU usage**: Idle state - multiply final power by 10% (deep idle)
 - **7%-14% CPU usage**: Low power mode - multiply final power by 50% (light background activity)
 - **Above 14% CPU usage**: Full calculated power (active workload)
-- **Above 90% CPU usage**: 15% turbo boost applied (high demand scenarios)
+- **Turbo boost**: Removed (was too aggressive at high usage levels)
 
 **Technical Implementation:**
 ```powershell
@@ -699,10 +699,8 @@ if ($usagePercent -lt 7) {
 }
 # Above 14%: Full calculated power (no reduction)
 
-# Turbo boost based on usage demand
-if ($usagePercent -gt 90) {
-    $turboBoost = ($usagePercent - 90) / 10.0   # 15% boost with variation
-}
+# Turbo boost removed (was too aggressive)
+$turboFactor = 1.0
 ```
 
 **Maintained Features:**
