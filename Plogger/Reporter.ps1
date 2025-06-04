@@ -1115,49 +1115,55 @@ $reportContent = @"
         <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="ramChart">
-                    <div class="chart-title">RAM and VRAM Usage (MB)</div>
+                    <div class="chart-title">RAM Usage (%)</div>
                     <canvas id="ramChart"></canvas>
                 </div>
             </div>
+            <div class="chart-half">
+                <div class="chart-container" draggable="true" data-chart-id="vramChart">
+                    <div class="chart-title">VRAM Usage (%)</div>
+                    <canvas id="vramChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="diskChart">
                     <div class="chart-title">Disk I/O (Transfers/sec)</div>
                     <canvas id="diskChart"></canvas>
                 </div>
             </div>
-        </div>
-
-        <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="networkChart">
                     <div class="chart-title">Network I/O (Bytes/sec)</div>
                     <canvas id="networkChart"></canvas>
                 </div>
             </div>
+        </div>
+
+        <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="tempChart">
                     <div class="chart-title">Temperatures (&#176;C)</div>
                     <canvas id="tempChart"></canvas>
                 </div>
             </div>
-        </div>
-
-        <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="brightnessChart">
                     <div class="chart-title">Screen Brightness & Battery Percentage (%)</div>
                     <canvas id="brightnessChart"></canvas>
                 </div>
             </div>
+        </div>
+
+        <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="powerDrawChart">
                     <div class="chart-title">Power Draw (W)</div>
                     <canvas id="powerDrawChart"></canvas>
                 </div>
             </div>
-        </div>
-
-        <div class="chart-row">
             <div class="chart-half">
                 <div class="chart-container" draggable="true" data-chart-id="gpuEngineChart">
                     <div class="chart-title">GPU Engine Utilization (%)</div>
@@ -1165,6 +1171,7 @@ $reportContent = @"
                 </div>
             </div>
         </div>
+
     </div>
 
     <script>
@@ -1174,13 +1181,21 @@ $reportContent = @"
         const cpuUsage = [];
         const cpuClockSpeed = [];
         const ramUsed = [];
+        const ramPercentage = [];
+        const ramUsageGB = [];
+        const vramUsed = [];
+        const vramPercentage = [];
+        const vramUsageGB = [];
         const diskIO = [];
         const networkIO = [];
         const cpuTemp = [];
         const gpuTemp = [];
-        const gpuVramUsed = [];
         const cpuPowerDraw = [];
         const gpuPowerDraw = [];
+        
+        // Get total capacities from first valid row
+        let ramTotalGB = 0;
+        let vramTotalGB = 0;
         
         // Function to convert raw temperature to Celsius for charts
         function convertRawTempToCelsius(rawValue) {
@@ -1234,7 +1249,43 @@ $reportContent = @"
             const cpuValue = parseNumeric(row.CPUUsagePercent);
             cpuUsage.push(cpuValue !== null ? Math.min(cpuValue, 100) : null);
             cpuClockSpeed.push(parseNumeric(row.CPURealTimeClockSpeedMHz));
-            ramUsed.push(parseNumeric(row.RAMUsedMB));
+            
+            // Process RAM data for percentage and GB calculation
+            const ramUsedMB = parseNumeric(row.RAMUsedMB);
+            const ramTotalMB = parseNumeric(row.RAMTotalMB);
+            ramUsed.push(ramUsedMB);
+            
+            // Set total capacities from first valid row
+            if (index === 0 && ramTotalMB !== null) {
+                ramTotalGB = Math.round(ramTotalMB / 1024 * 100) / 100; // Convert MB to GB, round to 2 decimal places
+            }
+            
+            if (ramUsedMB !== null && ramTotalMB !== null && ramTotalMB > 0) {
+                ramPercentage.push(Math.round((ramUsedMB / ramTotalMB) * 100 * 100) / 100); // Round to 2 decimal places
+                ramUsageGB.push(Math.round(ramUsedMB / 1024 * 100) / 100); // Convert used MB to GB
+            } else {
+                ramPercentage.push(null);
+                ramUsageGB.push(null);
+            }
+            
+            // Process VRAM data for percentage and GB calculation
+            const vramUsedMB = parseNumeric(row.NVIDIAGPUMemoryUsed_MB);
+            const vramTotalMB = parseNumeric(row.NVIDIAGPUMemoryTotal_MB) || parseNumeric(row.GPUNVIDIAVRAM_MB);
+            vramUsed.push(vramUsedMB);
+            
+            // Set VRAM total capacity from first valid row
+            if (index === 0 && vramTotalMB !== null) {
+                vramTotalGB = Math.round(vramTotalMB / 1024 * 100) / 100; // Convert MB to GB, round to 2 decimal places
+            }
+            
+            if (vramUsedMB !== null && vramTotalMB !== null && vramTotalMB > 0) {
+                vramPercentage.push(Math.round((vramUsedMB / vramTotalMB) * 100 * 100) / 100); // Round to 2 decimal places
+                vramUsageGB.push(Math.round(vramUsedMB / 1024 * 100) / 100); // Convert used MB to GB
+            } else {
+                vramPercentage.push(null);
+                vramUsageGB.push(null);
+            }
+            
             diskIO.push(parseNumeric(row.DiskIOTransferSec));
             networkIO.push(parseNumeric(row.NetworkIOBytesSec));
             // Handle both raw temperature data and legacy converted data
@@ -1254,12 +1305,6 @@ $reportContent = @"
                 gpuTemp.push(null);
             }
             
-            // Handle GPU VRAM usage data
-            if (row.hasOwnProperty('NVIDIAGPUMemoryUsed_MB')) {
-                gpuVramUsed.push(parseNumeric(row.NVIDIAGPUMemoryUsed_MB));
-            } else {
-                gpuVramUsed.push(null);
-            }
             
             // Handle CPU power draw data
             if (row.hasOwnProperty('CPUEstimatedPowerDraw')) {
@@ -1419,6 +1464,92 @@ $reportContent = @"
             return result;
         }
 
+        function createDualAxisChart(canvasId, percentageData, usageGBData, totalCapacityGB, title, percentageColor, capacityColor) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const options = JSON.parse(JSON.stringify(commonOptions));
+            
+            // Get max capacity for right axis scaling
+            const maxCapacityGB = totalCapacityGB > 0 ? totalCapacityGB : Math.max(...usageGBData.filter(v => v !== null));
+            
+            // Configure dual y-axes - both showing the same data but with different scales
+            options.scales.y = {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: { display: true, text: 'Usage (%)' },
+                min: 0,
+                max: 100,
+                grid: { color: 'rgba(0, 0, 0, 0.1)' },
+                ticks: {
+                    callback: function(value) {
+                        return value.toFixed(0) + '%';
+                    }
+                }
+            };
+            options.scales.y1 = {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: { display: true, text: 'Usage (GB)' },
+                min: 0,
+                max: maxCapacityGB,
+                grid: { drawOnChartArea: false },
+                ticks: {
+                    callback: function(value) {
+                        return value.toFixed(1) + ' GB';
+                    }
+                }
+            };
+            
+            // Calculate trend line for GB usage
+            const usageGBTrend = calculateTrendLine(usageGBData);
+            const usageGBTrendColor = capacityColor.replace('rgb', 'rgba').replace(')', ', 0.7)');
+            
+            const datasets = [];
+            
+            // Add usage in GB dataset (primary line)
+            if (usageGBData.some(val => val !== null && val !== undefined)) {
+                datasets.push({
+                    label: title + ' Usage (GB)',
+                    data: usageGBData,
+                    borderColor: capacityColor,
+                    backgroundColor: capacityColor.replace(')', ', 0.2)').replace('rgb', 'rgba'),
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHitRadius: 10,
+                    yAxisID: 'y1'
+                });
+            }
+            
+            // Add usage GB trend line
+            if (usageGBTrend.length > 0 && usageGBData.some(val => val !== null && val !== undefined)) {
+                datasets.push({
+                    label: title + ' Usage Trend (GB)',
+                    data: usageGBTrend,
+                    borderColor: usageGBTrendColor,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    tension: 0,
+                    pointRadius: 0,
+                    pointHoverRadius: 0,
+                    pointHitRadius: 0,
+                    yAxisID: 'y1'
+                });
+            }
+            
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: datasets
+                },
+                options: options
+            });
+        }
+
         function createChart(canvasId, label, data, color, yAxisLabel, min = null, max = null) {
             const ctx = document.getElementById(canvasId).getContext('2d');
             const options = JSON.parse(JSON.stringify(commonOptions));
@@ -1543,15 +1674,24 @@ $reportContent = @"
         // Store all created charts
         storeChartConfig('cpuChart', createChart('cpuChart', 'CPU Usage', cpuUsage, 'rgb(255, 99, 132)', 'Usage (%)', 0, 100));
         storeChartConfig('cpuClockChart', createChart('cpuClockChart', 'CPU Real-Time Clock Speed', cpuClockSpeed, 'rgb(255, 159, 64)', 'Clock Speed (MHz)'));
-        // Create RAM and VRAM chart with multi-dataset
-        const ramDatasets = [
-            { label: 'RAM Used', data: ramUsed, borderColor: 'rgb(54, 162, 235)', backgroundColor: 'rgba(54, 162, 235, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 }
-        ];
-        // Add GPU VRAM if available
-        if (gpuVramUsed.some(val => val !== null && val !== undefined)) {
-            ramDatasets.push({ label: 'GPU VRAM Used', data: gpuVramUsed, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
+        
+        // Create separate RAM and VRAM charts with dual axes
+        storeChartConfig('ramChart', createDualAxisChart('ramChart', ramPercentage, ramUsageGB, ramTotalGB, 'RAM', 'rgb(54, 162, 235)', 'rgb(54, 162, 235)'));
+        
+        // Create VRAM chart only if VRAM data is available
+        if (vramPercentage.some(val => val !== null && val !== undefined)) {
+            storeChartConfig('vramChart', createDualAxisChart('vramChart', vramPercentage, vramUsageGB, vramTotalGB, 'VRAM', 'rgb(75, 192, 192)', 'rgb(75, 192, 192)'));
+        } else {
+            // Show message if no VRAM data available
+            const vramCanvas = document.getElementById('vramChart');
+            if (vramCanvas) {
+                const ctx = vramCanvas.getContext('2d');
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#666';
+                ctx.fillText('No VRAM data available', vramCanvas.width / 2, vramCanvas.height / 2);
+            }
         }
-        storeChartConfig('ramChart', createMultiChart('ramChart', ramDatasets, 'Memory (MB)'));
         
         storeChartConfig('diskChart', createChart('diskChart', 'Disk Transfers/sec', diskIO, 'rgb(255, 159, 64)', 'Transfers/sec'));
         storeChartConfig('networkChart', createChart('networkChart', 'Network Bytes/sec', networkIO, 'rgb(153, 102, 255)', 'Bytes/sec'));

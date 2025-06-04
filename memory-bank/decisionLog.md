@@ -465,3 +465,48 @@ $correctedCPU = $currentCPU * 1.5
 - **Diagnostic Accuracy**: More reliable performance analysis and troubleshooting
 - **Consistent Scaling**: All CPU-related visualizations and statistics use corrected values
 - **Backward Compatible**: Handles both old and new CSV format with appropriate correction
+
+[2025-06-04 15:06:00] - RAM and VRAM Chart Separation with Dual-Axis Percentage View
+
+## Decision
+
+Separated the combined "RAM and VRAM Usage (MB)" chart into two distinct charts: "RAM Usage (%)" and "VRAM Usage (%)" with dual-axis visualization showing percentage (0-100%) on the left and capacity in GB on the right.
+
+## Rationale
+
+User requested separation of RAM and VRAM into individual charts with percentage view from 0-100% on the left axis and actual capacity in GB displayed on the right axis. This provides better granular monitoring of memory usage with intuitive percentage visualization while maintaining capacity reference information.
+
+## Implementation Details
+
+**Chart Architecture Changes:**
+- Replaced single combined chart with two separate chart containers in HTML layout
+- Created new `createDualAxisChart()` function supporting dual y-axis configuration
+- Left axis (y): Percentage scale 0-100% with usage data
+- Right axis (y1): Capacity reference showing total GB capacity as constant line
+
+**Data Processing Enhancement:**
+- Added `ramPercentage`, `ramTotalGB`, `vramPercentage`, `vramTotalGB` data arrays
+- Calculate percentage: `(usedMB / totalMB) * 100` rounded to 2 decimal places
+- Convert capacity: `totalMB / 1024` to GB rounded to 2 decimal places
+- Process both `RAMTotalMB`/`RAMUsedMB` and `NVIDIAGPUMemoryTotal_MB`/`NVIDIAGPUMemoryUsed_MB`
+
+**Visual Design:**
+- Percentage data displayed as primary line chart with trend lines
+- Capacity shown as dashed reference line on right axis
+- Automatic chart generation only when data available (graceful VRAM handling)
+- Maintained existing drag & drop and chart storage functionality
+
+**Layout Reorganization:**
+- RAM and VRAM charts positioned side-by-side in first chart row
+- Disk I/O and Network I/O moved to second chart row
+- Temperatures and Screen Brightness moved to third chart row
+- Power Draw and GPU Engine charts in fourth chart row
+
+## Impact
+
+- **Enhanced User Experience**: Intuitive percentage view with 0-100% scale for easy interpretation
+- **Detailed Memory Monitoring**: Separate charts allow focused analysis of RAM vs VRAM usage patterns
+- **Capacity Awareness**: Right axis shows actual memory capacity for context
+- **Trend Analysis**: Polynomial regression trend lines for both RAM and VRAM percentage data
+- **Scalable Design**: Framework supports additional memory types or future enhancements
+- **Data Completeness**: Handles systems with or without discrete GPU VRAM gracefully

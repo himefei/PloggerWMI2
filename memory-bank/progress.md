@@ -306,3 +306,29 @@ Status: ✅ COMPLETED
 - Maintained all core monitoring functionality (CPU, RAM, Disk, Network, GPU Engine utilization)
 - Enhanced script transparency for security scanning tools
 - Preserved backward compatibility with existing CSV files
+
+[2025-06-04 15:06:00] - RAM and VRAM Chart Separation with Dual-Axis Percentage View
+## Completed Tasks
+
+* **Chart Architecture Enhancement**: Separated combined RAM/VRAM chart into two distinct charts with dual-axis visualization
+* **Dual-Axis Implementation**: Created createDualAxisChart() function supporting percentage (left) and capacity (right) axes
+* **Data Processing Enhancement**: Added RAM and VRAM percentage calculations from total capacity with GB conversion
+* **Layout Reorganization**: Restructured chart grid to accommodate separate memory charts while maintaining responsive design
+* **Trend Analysis Integration**: Applied polynomial regression trend lines to both RAM and VRAM percentage data
+* **Graceful VRAM Handling**: Added conditional chart creation for systems without discrete GPU VRAM
+
+## Key Features Implemented
+- RAM Usage (%): 0-100% scale on left axis, total RAM capacity in GB on right axis
+- VRAM Usage (%): 0-100% scale on left axis, total VRAM capacity in GB on right axis
+- Automatic percentage calculation: (usedMB / totalMB) * 100 rounded to 2 decimal places
+- Capacity conversion: totalMB / 1024 to GB rounded to 2 decimal places
+- Enhanced chart layout with proper responsive design and drag & drop functionality
+- Trend line visualization for both memory usage patterns
+
+## Implementation Benefits
+- Enhanced memory monitoring with intuitive percentage visualization (0-100%)
+- Separate analysis capabilities for system RAM vs GPU VRAM usage patterns
+- Capacity awareness through GB reference display on right axis
+- Improved user experience with familiar percentage-based memory monitoring
+- Maintained all existing functionality including drag & drop and chart storage
+- Future-extensible framework for additional memory monitoring enhancements

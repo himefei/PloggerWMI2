@@ -136,3 +136,20 @@ This file tracks the project's current status, including recent changes, current
 * Updated Reporter.ps1 to remove Intel GPU metrics from statistics configuration
 * Removed Intel GPU temperature, memory, and power draw from chart data collection
 * Added explanatory comments about Intel GPU monitoring removal
+
+[2025-06-04 15:06:00] - RAM and VRAM Chart Separation with Percentage View
+## Current Focus
+
+* Separated RAM and VRAM from combined chart into two distinct charts
+* Implemented dual-axis visualization showing percentage (0-100%) on left axis and capacity in GB on right axis
+* Enhanced user experience with more detailed memory monitoring capabilities
+
+## Recent Changes
+
+* Created separate RAM Usage (%) and VRAM Usage (%) charts replacing the combined "RAM and VRAM Usage (MB)" chart
+* Implemented createDualAxisChart() function for dual y-axis charts with percentage and capacity views
+* Added data processing for RAM and VRAM percentage calculations from total capacity
+* Added capacity display in GB on right axis for both RAM and VRAM charts
+* Reorganized chart layout to accommodate new separate charts while maintaining responsive design
+* Enhanced chart creation with automatic trend line calculation for percentage data
+* Added graceful handling for systems without VRAM data availability
