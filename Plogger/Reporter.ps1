@@ -1057,6 +1057,103 @@ if ($data.Count -gt 0) {
 "@
 }
 
+# --- Network Statistics Section ---
+Write-Host "Calculating Network Statistics..."
+$networkStatisticsSectionHtml = ""
+if ($data.Count -gt 0) {
+    # Extract network adapter information from raw data
+    $networkAdapters = @{}
+    
+    foreach ($row in $data) {
+        $rawNetworkData = $row.NetworkAdaptersRawData
+        
+        if ($null -ne $rawNetworkData -and $rawNetworkData -ne "" -and $rawNetworkData -ne "N/A") {
+            try {
+                $adapters = $rawNetworkData | ConvertFrom-Json
+                
+                foreach ($adapter in $adapters) {
+                    $adapterName = $adapter.Name
+                    $currentBandwidth = $adapter.CurrentBandwidth
+                    
+                    if (-not $networkAdapters.ContainsKey($adapterName)) {
+                        $networkAdapters[$adapterName] = @{
+                            Name = $adapterName
+                            MaxBandwidth = $currentBandwidth
+                            MinBandwidth = $currentBandwidth
+                            HasActivity = $false
+                        }
+                    }
+                    
+                    # Track max bandwidth seen for this adapter
+                    if ($currentBandwidth -gt $networkAdapters[$adapterName].MaxBandwidth) {
+                        $networkAdapters[$adapterName].MaxBandwidth = $currentBandwidth
+                    }
+                    
+                    # Track if adapter had any activity (non-zero bandwidth)
+                    if ($currentBandwidth -gt 0) {
+                        $networkAdapters[$adapterName].HasActivity = $true
+                    }
+                }
+            } catch {
+                Write-Verbose "Failed to process Network Adapter raw data for timestamp $($row.Timestamp): $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    if ($networkAdapters.Count -gt 0) {
+        $networkStatsHtml = ""
+        
+        foreach ($adapterName in $networkAdapters.Keys | Sort-Object) {
+            $adapter = $networkAdapters[$adapterName]
+            $linkSpeed = "not connected"
+            
+            if ($adapter.MaxBandwidth -gt 0) {
+                # Convert bandwidth from bps to more readable format
+                $bandwidthBps = $adapter.MaxBandwidth
+                if ($bandwidthBps -ge 1000000000) {
+                    $linkSpeed = "$([math]::Round($bandwidthBps / 1000000000, 1)) Gbps"
+                } elseif ($bandwidthBps -ge 1000000) {
+                    $linkSpeed = "$([math]::Round($bandwidthBps / 1000000, 1)) Mbps"
+                } elseif ($bandwidthBps -ge 1000) {
+                    $linkSpeed = "$([math]::Round($bandwidthBps / 1000, 1)) Kbps"
+                } else {
+                    $linkSpeed = "$bandwidthBps bps"
+                }
+            }
+            
+            $networkStatsHtml += "<li><strong>$($adapter.Name):</strong> $linkSpeed</li>`n            "
+        }
+        
+        $networkStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Network Statistics</h2>
+        <ul>
+            $networkStatsHtml
+        </ul>
+        <ul>
+            <li><em>Link speeds are reported as maximum bandwidth observed during logging session.</em></li>
+            <li><em>Adapters showing "not connected" had zero bandwidth throughout the session.</em></li>
+        </ul>
+    </div>
+"@
+    } else {
+        $networkStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Network Statistics</h2>
+        <p>No network adapter data available.</p>
+    </div>
+"@
+    }
+} else {
+    $networkStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Network Statistics</h2>
+        <p>No data available for network statistics.</p>
+    </div>
+"@
+}
+Write-Host "Network Statistics Calculation Complete."
+
 # Pre-process the CSV data to JSON for JavaScript
 $jsonData = $data | ConvertTo-Json -Depth 10 -Compress
 $jsonDataForJs = $jsonData.Replace('\', '\\').Replace('"', '\"')
@@ -1099,6 +1196,7 @@ $reportContent = @"
 
     $overallStatsSummaryHtml
     $powerStatisticsSectionHtml
+    $networkStatisticsSectionHtml
 
     <div class="drag-instructions">
         &#128202; <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.

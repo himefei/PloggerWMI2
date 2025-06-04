@@ -745,6 +745,54 @@ function Capture-ResourceUsage {
                             $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_static
                         }
                     }
+                    
+                    # ADDITIONAL FALLBACK: Try BatteryCycleCount class for design capacity (common on x86/x64)
+                    if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh -eq 0) {
+                        try {
+                            $bccInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryCycleCount" -ErrorAction SilentlyContinue
+                            if ($bccInstance -and $bccInstance.DesignedCapacity) {
+                                $batteryDesignCapacity_mWh_cc = $bccInstance.DesignedCapacity
+                                Write-Verbose "DesignCapacity from ROOT\WMI\BatteryCycleCount: $batteryDesignCapacity_mWh_cc mWh"
+                                if ($batteryDesignCapacity_mWh_cc -ne $null -and $batteryDesignCapacity_mWh_cc -gt 0) {
+                                    $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_cc
+                                }
+                            }
+                        } catch {
+                            Write-Verbose "BatteryCycleCount fallback failed: $($_.Exception.Message)"
+                        }
+                    }
+                    
+                    # ADDITIONAL FALLBACK: Try MSBatteryClass for design capacity (alternative on x86/x64)
+                    if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh -eq 0) {
+                        try {
+                            $msbInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "MSBatteryClass" -ErrorAction SilentlyContinue
+                            if ($msbInstance -and $msbInstance.DesignedCapacity) {
+                                $batteryDesignCapacity_mWh_msb = $msbInstance.DesignedCapacity
+                                Write-Verbose "DesignCapacity from ROOT\WMI\MSBatteryClass: $batteryDesignCapacity_mWh_msb mWh"
+                                if ($batteryDesignCapacity_mWh_msb -ne $null -and $batteryDesignCapacity_mWh_msb -gt 0) {
+                                    $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_msb
+                                }
+                            }
+                        } catch {
+                            Write-Verbose "MSBatteryClass fallback failed: $($_.Exception.Message)"
+                        }
+                    }
+                    
+                    # FINAL FALLBACK: Try Win32_PortableBattery (often available on laptops)
+                    if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh -eq 0) {
+                        try {
+                            $pbInstance = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName "Win32_PortableBattery" -ErrorAction SilentlyContinue
+                            if ($pbInstance -and $pbInstance.DesignCapacity) {
+                                $batteryDesignCapacity_mWh_pb = $pbInstance.DesignCapacity
+                                Write-Verbose "DesignCapacity from Win32_PortableBattery: $batteryDesignCapacity_mWh_pb mWh"
+                                if ($batteryDesignCapacity_mWh_pb -ne $null -and $batteryDesignCapacity_mWh_pb -gt 0) {
+                                    $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_pb
+                                }
+                            }
+                        } catch {
+                            Write-Verbose "Win32_PortableBattery fallback failed: $($_.Exception.Message)"
+                        }
+                    }
 
                     # Store raw mWh values for calculation in Reporter.ps1
                     if ($null -ne $batteryFullChargedCapacity_mWh -and $batteryFullChargedCapacity_mWh -gt 0 -and $null -ne $batteryRemainingCapacity_mWh) {

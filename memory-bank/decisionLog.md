@@ -724,3 +724,46 @@ $turboFactor = 1.0
 - **Active workload (25% usage, 60% performance)**: Full power draw based on frequency
 - **Thermal throttling (100% usage, 20% performance)**: Low power draw (frequency-limited, no false high reading)
 - **High demand (95% usage, 95% performance)**: Full power + 15% turbo boost
+[2025-06-04 21:25:00] - Network Statistics Implementation Decision
+**Decision**: Added Network Statistics summary section to Reporter.ps1 to display network adapter names and link speeds from raw NetworkAdaptersRawData
+
+**Rationale**: 
+- User requested enhanced network monitoring visibility in hardware reports
+- NetworkAdaptersRawData field already contains adapter names and CurrentBandwidth information
+- Existing raw data processing pattern could be extended for network adapter analysis
+- Network information complements existing system monitoring capabilities
+
+**Implementation Details**:
+- Extract adapter data from JSON NetworkAdaptersRawData field across all log entries
+- Track maximum CurrentBandwidth observed for each adapter during session
+- Convert bandwidth values to human-readable units (Gbps/Mbps/Kbps/bps)
+- Display "not connected" for adapters with zero bandwidth throughout session
+- Position section between Power Statistics and charts for logical information flow
+
+**Benefits**:
+- Enhanced network adapter visibility without additional data collection overhead
+- Consistent with existing statistics section design patterns
+- Automatic handling of multiple adapters and connection state changes
+- Provides valuable network infrastructure information for system analysis
+[2025-06-04 21:29:00] - Battery Design Capacity Cross-Architecture Compatibility Fix
+**Decision**: Enhanced battery design capacity detection in Plogger.ps1 with multiple WMI class fallbacks to address x86/x64 vs ARM compatibility issues
+
+**Rationale**: 
+- User reported Battery Design Capacity showing "Data not available" on x86/x64 systems while working correctly on ARM-based Windows systems
+- Original implementation only tried Win32_Battery.DesignCapacity and ROOT\WMI\BatteryStaticData.DesignedCapacity
+- Different Windows architectures expose battery design capacity through different WMI classes
+- x86/x64 systems often require alternative WMI classes not needed on ARM systems
+
+**Implementation Details**:
+- Added cascading fallback system with multiple WMI classes
+- Fallback 1: ROOT\WMI\BatteryCycleCount.DesignedCapacity (common on x86/x64)
+- Fallback 2: ROOT\WMI\MSBatteryClass.DesignedCapacity (alternative WMI class)
+- Fallback 3: Win32_PortableBattery.DesignCapacity (laptop-specific class)
+- Each fallback only attempts if previous methods returned null or zero
+- Enhanced verbose logging for debugging and verification
+
+**Benefits**:
+- Improved cross-architecture compatibility for battery monitoring
+- Reduced "Data not available" occurrences in Power Statistics reports
+- Maintains ARM system compatibility while enhancing x86/x64 support
+- Future-extensible design for additional WMI class support
