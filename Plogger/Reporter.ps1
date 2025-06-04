@@ -1886,7 +1886,7 @@ $reportContent = @"
         if (gpuTemp.some(val => val !== null && val !== undefined)) {
             tempDatasets.push({ label: 'GPU Temperature', data: gpuTemp, borderColor: 'rgb(255, 159, 64)', backgroundColor: 'rgba(255, 159, 64, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 10 });
         }
-        storeChartConfig('tempChart', createMultiChart('tempChart', tempDatasets, 'Temperature (°C)'));
+        storeChartConfig('tempChart', createMultiChart('tempChart', tempDatasets, 'Temperature (°C)', 0, 105));
         
         // Create Power Draw chart with multi-dataset
         const powerDatasets = [];
