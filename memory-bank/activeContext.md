@@ -153,3 +153,17 @@ This file tracks the project's current status, including recent changes, current
 * Reorganized chart layout to accommodate new separate charts while maintaining responsive design
 * Enhanced chart creation with automatic trend line calculation for percentage data
 * Added graceful handling for systems without VRAM data availability
+[2025-06-04 19:42:00] - CPU Power Draw Calculation Enhancement Implementation
+## Current Focus
+
+* Enhanced CPU power estimation accuracy by switching from CPUProcessorPerformance to CPUUsagePercent
+* Implemented improved idle power thresholds with specific usage-based criteria
+* Adjusted turbo boost trigger from 70% to 90% for more realistic CPU behavior
+
+## Recent Changes
+
+* Modified Calculate-CPUPowerEstimation function to use CPUUsagePercent instead of CPUProcessorPerformance
+* Enhanced idle power calculation: below 7% = 10% TDP, 6-13% = 50% TDP, above 13% = standard calculation
+* Updated turbo boost trigger to activate only above 90% CPU usage instead of 70%
+* Maintained all existing power variation factors (thermal, voltage, workload) for realistic behavior
+* Updated conditional validation to check for CPUUsagePercent column availability

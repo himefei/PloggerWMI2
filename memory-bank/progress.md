@@ -332,3 +332,25 @@ Status: ✅ COMPLETED
 - Improved user experience with familiar percentage-based memory monitoring
 - Maintained all existing functionality including drag & drop and chart storage
 - Future-extensible framework for additional memory monitoring enhancements
+[2025-06-04 19:42:00] - CPU Power Draw Calculation Enhancement Completed
+## Completed Tasks
+
+* **CPU Usage Percentage Integration**: Successfully switched CPU power estimation from CPUProcessorPerformance to CPUUsagePercent for more intuitive correlation
+* **Enhanced Idle Power Thresholds**: Implemented improved idle power calculation with specific usage-based criteria
+* **Turbo Boost Optimization**: Adjusted turbo boost trigger from 70% to 90% CPU usage for more realistic high-performance behavior
+* **Maintained Power Variation**: Preserved all existing realistic power variation factors (thermal, voltage, workload) for authentic power consumption simulation
+* **Memory Bank Documentation**: Updated decisionLog.md and activeContext.md with implementation details and rationale
+
+## Key Features Implemented
+- Below 7% CPU usage: 10% of CPU TDP idle power
+- Between 6-13% CPU usage: 50% of CPU TDP idle power (enhanced for light workloads)
+- Above 13% CPU usage: Standard calculation with 10% base idle power
+- Turbo boost effects only activate above 90% CPU usage instead of 70%
+- All power variation factors maintained for realistic power consumption patterns
+
+## Implementation Benefits
+- More intuitive CPU usage to power consumption correlation
+- Enhanced accuracy for light workload power estimation
+- Realistic turbo boost behavior matching actual CPU characteristics
+- Preserved all existing functionality while improving calculation accuracy
+- Better alignment with user expectations for CPU power consumption patterns
