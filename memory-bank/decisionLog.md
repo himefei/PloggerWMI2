@@ -606,3 +606,123 @@ if ($usagePercent -lt 6) {
 - **Linear High-Usage Scaling**: Above 40% usage provides intuitive linear relationship with power consumption
 - **Production-Ready Accuracy**: Enhanced model better matches real-world CPU power consumption patterns
 - **Maintained Randomness**: All power variation factors preserved for authentic power behavior simulation
+[2025-06-04 20:26:00] - CPU Power Draw Reversion to CPUProcessorPerformance
+
+## Decision
+
+Reverted CPU power draw calculation back to using CPUProcessorPerformance instead of CPUUsagePercent to handle thermal throttling scenarios correctly.
+
+## Rationale 
+
+User identified a critical flaw with using CPU usage percentage for power estimation: during thermal throttling, CPUs can be locked to very low frequencies (e.g., 500MHz) while showing 100% CPU usage. This would result in misleading high power draw estimates when the CPU is actually consuming much less power due to the reduced frequency.
+
+CPUProcessorPerformance better reflects the actual CPU frequency and correlates more accurately with power consumption, especially in thermal throttling scenarios where frequency is reduced but utilization remains high.
+
+## Implementation Details
+
+**Reverted Changes:**
+- Switched back from `CPUUsagePercent` to `CPUProcessorPerformance` as base metric
+- Restored original power calculation: `TDP * (Performance% / 100)` with 12% idle power
+- Updated all variable references from `$usagePercent` to `$performancePercent`
+- Restored conditional validation to check for `CPUProcessorPerformance` column
+- Reverted turbo boost trigger to use performance percentage instead of usage percentage
+
+**Technical Implementation:**
+```powershell
+# Original approach restored
+$performancePercent = [double]$cpuPerformance
+$idlePowerPercent = 0.12  # 12% of TDP for idle power
+$activePowerPercent = ($performancePercent / 100.0) * (1.0 - $idlePowerPercent)
+$basePowerDraw = $cpuTDP * ($idlePowerPercent + $activePowerPercent)
+
+# Turbo boost at >90% performance (not usage)
+if ($performancePercent -gt 90) {
+    $turboBoost = ($performancePercent - 90) / 10.0
+}
+```
+
+**Maintained Features:**
+- All randomness factors preserved (thermal, voltage, workload variations)
+- Turbo boost trigger at >90% (now based on performance, not usage)
+- Deterministic timestamp-based random seeding for consistency
+- Power limits: minimum idle power, maximum 1.5x TDP
+
+## Impact
+
+- **Thermal Throttling Accuracy**: Power estimation now correctly handles scenarios where CPU is throttled to low frequencies
+- **Frequency Correlation**: Power draw correlates with actual CPU frequency/performance rather than utilization
+- **Realistic Throttling Behavior**: During thermal throttling, power draw will be low despite high CPU usage
+- **Production Reliability**: Eliminates false high power readings in constrained thermal environments
+- **Maintained Authenticity**: All power variation factors preserved for realistic consumption patterns
+
+## Use Case Example
+
+- **Before (CPUUsagePercent)**: Throttled CPU at 500MHz showing 100% usage → High estimated power draw (incorrect)
+- **After (CPUProcessorPerformance)**: Throttled CPU at 500MHz showing ~20% performance → Low estimated power draw (correct)
+[2025-06-04 20:34:00] - Hybrid CPU Power Draw Calculation Implementation
+
+## Decision
+
+Implemented hybrid CPU power draw calculation using both CPUProcessorPerformance and CPUUsagePercent metrics for optimal accuracy across all scenarios including thermal throttling and idle states.
+
+## Rationale 
+
+The hybrid approach combines the best of both metrics:
+- **CPUProcessorPerformance**: Provides accurate frequency-based power calculation, essential for thermal throttling scenarios
+- **CPUUsagePercent**: Enables intelligent idle state detection and turbo boost triggering based on actual workload demand
+
+This dual-metric approach delivers more realistic and reliable power consumption estimates that reflect real-world CPU behavior.
+
+## Implementation Details
+
+**Hybrid Power Calculation Logic:**
+1. **Base Power**: Calculated using `CPUProcessorPerformance * TDP` (frequency-accurate)
+2. **Usage-Based Adjustments**: Applied based on `CPUUsagePercent` thresholds
+3. **Turbo Boost**: Triggered by `CPUUsagePercent` >90% (workload-based)
+
+**Power State Adjustments:**
+- **Below 7% CPU usage**: Idle state - multiply final power by 10% (deep idle)
+- **7%-14% CPU usage**: Low power mode - multiply final power by 50% (light background activity)
+- **Above 14% CPU usage**: Full calculated power (active workload)
+- **Above 90% CPU usage**: 15% turbo boost applied (high demand scenarios)
+
+**Technical Implementation:**
+```powershell
+# Base calculation using frequency performance
+$basePowerDraw = $cpuTDP * ($performancePercent / 100.0)
+
+# Usage-based power state adjustments
+if ($usagePercent -lt 7) {
+    $basePowerDraw = $basePowerDraw * 0.10      # Idle: 10% of calculated power
+} elseif ($usagePercent -ge 7 -and $usagePercent -le 14) {
+    $basePowerDraw = $basePowerDraw * 0.50      # Low power: 50% of calculated power
+}
+# Above 14%: Full calculated power (no reduction)
+
+# Turbo boost based on usage demand
+if ($usagePercent -gt 90) {
+    $turboBoost = ($usagePercent - 90) / 10.0   # 15% boost with variation
+}
+```
+
+**Maintained Features:**
+- All randomness factors preserved (thermal, voltage, workload variations)
+- Deterministic timestamp-based random seeding for consistency
+- Power limits: minimum 5% TDP, maximum 1.5x TDP
+- Performance-based variation calculations for authenticity
+
+## Impact
+
+- **Thermal Throttling Accuracy**: Performance-based calculation handles frequency reduction correctly
+- **Intelligent Idle Detection**: Usage-based adjustments provide realistic idle/low-power behavior
+- **Workload-Responsive Boost**: Turbo boost triggers based on actual CPU demand, not just frequency
+- **Real-World Correlation**: Dual-metric approach mirrors actual CPU power management behavior
+- **Comprehensive Coverage**: Handles all scenarios from deep idle to thermal throttling to high-demand workloads
+
+## Use Case Examples
+
+- **Idle (2% usage, 15% performance)**: Low power draw (performance-based * 10% idle reduction)
+- **Light workload (8% usage, 30% performance)**: Moderate power draw (performance-based * 50% reduction)
+- **Active workload (25% usage, 60% performance)**: Full power draw based on frequency
+- **Thermal throttling (100% usage, 20% performance)**: Low power draw (frequency-limited, no false high reading)
+- **High demand (95% usage, 95% performance)**: Full power + 15% turbo boost

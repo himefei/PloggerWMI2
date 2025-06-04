@@ -240,6 +240,7 @@ function Calculate-CPUPowerEstimation {
     
     foreach ($row in $Data) {
         $systemVersion = $row.SystemVersion
+        $cpuPerformance = $row.CPUProcessorPerformance
         $cpuUsage = $row.CPUUsagePercent
         $estimatedPowerDraw = $null
         
@@ -294,25 +295,25 @@ function Calculate-CPUPowerEstimation {
             $cpuTDP = 35  # Default 35W when system version unavailable
         }
         
-        # Calculate estimated power draw using CPU usage percentage with realistic variations
-        if ($null -ne $cpuUsage -and $cpuUsage -ne "" -and $cpuUsage -ne "N/A" -and $cpuUsage -ne "Error" -and $null -ne $cpuTDP) {
+        # Calculate estimated power draw using hybrid approach: CPUProcessorPerformance for base calculation, CPUUsagePercent for idle/boost detection
+        if ($null -ne $cpuPerformance -and $cpuPerformance -ne "" -and $cpuPerformance -ne "N/A" -and $cpuPerformance -ne "Error" -and
+            $null -ne $cpuUsage -and $cpuUsage -ne "" -and $cpuUsage -ne "N/A" -and $cpuUsage -ne "Error" -and $null -ne $cpuTDP) {
             try {
+                $performancePercent = [double]$cpuPerformance
                 $usagePercent = [double]$cpuUsage
                 
-                # Enhanced tiered power calculation based on CPU usage thresholds
-                if ($usagePercent -lt 6) {
-                    # Below 6%: 10% of TDP
-                    $basePowerDraw = $cpuTDP * 0.10
-                } elseif ($usagePercent -ge 6 -and $usagePercent -lt 12) {
-                    # 6%-12%: 30% of TDP
-                    $basePowerDraw = $cpuTDP * 0.30
-                } elseif ($usagePercent -ge 12 -and $usagePercent -le 40) {
-                    # 12%-40%: 45% of TDP
-                    $basePowerDraw = $cpuTDP * 0.45
-                } else {
-                    # Above 40%: Based on CPUUsagePercent with scaling
-                    $basePowerDraw = $cpuTDP * ($usagePercent / 100.0)
+                # Base power calculation using CPUProcessorPerformance (no idle offset - handled separately by usage-based adjustment)
+                $basePowerDraw = $cpuTDP * ($performancePercent / 100.0)
+                
+                # Apply usage-based power state adjustments
+                if ($usagePercent -lt 7) {
+                    # Below 7% usage: Idle state - reduce to 10% of calculated power
+                    $basePowerDraw = $basePowerDraw * 0.10
+                } elseif ($usagePercent -ge 7 -and $usagePercent -le 14) {
+                    # 7%-14% usage: Low power mode - reduce to 50% of calculated power
+                    $basePowerDraw = $basePowerDraw * 0.50
                 }
+                # Above 14% usage: Keep full calculated power (no reduction)
                 
                 # Add realistic power consumption variations to simulate real-world behavior
                 # Create a deterministic but varied random seed based on timestamp for consistency
@@ -320,19 +321,19 @@ function Calculate-CPUPowerEstimation {
                 $random = New-Object System.Random($timestampHash)
                 
                 # Apply multiple realistic variation factors:
-                # 1. Thermal variation (±2-8% based on usage level)
-                $thermalVariationRange = 0.02 + (($usagePercent / 100.0) * 0.06)  # 2-8% range
+                # 1. Thermal variation (±2-8% based on performance level)
+                $thermalVariationRange = 0.02 + (($performancePercent / 100.0) * 0.06)  # 2-8% range
                 $thermalFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $thermalVariationRange)
                 
                 # 2. Voltage regulation variation (±1-3%)
-                $voltageVariationRange = 0.01 + (($usagePercent / 100.0) * 0.02)  # 1-3% range
+                $voltageVariationRange = 0.01 + (($performancePercent / 100.0) * 0.02)  # 1-3% range
                 $voltageFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $voltageVariationRange)
                 
-                # 3. Workload efficiency variation (±2-5% based on usage)
-                $workloadVariationRange = 0.02 + (($usagePercent / 100.0) * 0.03)  # 2-5% range
+                # 3. Workload efficiency variation (±2-5% based on performance)
+                $workloadVariationRange = 0.02 + (($performancePercent / 100.0) * 0.03)  # 2-5% range
                 $workloadFactor = 1.0 + (($random.NextDouble() - 0.5) * 2 * $workloadVariationRange)
                 
-                # 4. Add slight non-linearity at high usage (turbo boost effects) - trigger at >90% instead of >70%
+                # 4. Add slight non-linearity at high usage (turbo boost effects) - trigger at >90% CPU usage
                 $turboFactor = 1.0
                 if ($usagePercent -gt 90) {
                     $turboBoost = ($usagePercent - 90) / 10.0  # 0 to 1 for 90-100% usage
@@ -342,8 +343,8 @@ function Calculate-CPUPowerEstimation {
                 # Apply all variation factors
                 $realisticPowerDraw = $basePowerDraw * $thermalFactor * $voltageFactor * $workloadFactor * $turboFactor
                 
-                # Ensure power draw doesn't go below minimum (10% TDP) or above reasonable maximum (1.5x TDP)
-                $minPower = $cpuTDP * 0.10  # Minimum 10% TDP
+                # Ensure power draw doesn't go below reasonable minimum (5% TDP) or above maximum (1.5x TDP)
+                $minPower = $cpuTDP * 0.05  # Minimum 5% TDP to handle extreme idle scenarios
                 $maxPower = $cpuTDP * 1.5
                 $estimatedPowerDraw = [Math]::Round([Math]::Max($minPower, [Math]::Min($maxPower, $realisticPowerDraw)), 2)
                 
@@ -750,10 +751,11 @@ if ($data[0].PSObject.Properties.Name -contains 'CPUProcessorPerformance' -and
     $data = Calculate-CPURealTimeClockSpeed -Data $data
 }
 
-# Calculate CPU power estimation based on system version and CPU usage
+# Calculate CPU power estimation based on system version, performance, and usage
 if ($data[0].PSObject.Properties.Name -contains 'SystemVersion' -and
+    $data[0].PSObject.Properties.Name -contains 'CPUProcessorPerformance' -and
     $data[0].PSObject.Properties.Name -contains 'CPUUsagePercent') {
-    Write-Host "Calculating CPU power estimation based on system model..."
+    Write-Host "Calculating hybrid CPU power estimation based on system model..."
     $data = Calculate-CPUPowerEstimation -Data $data
 }
 
