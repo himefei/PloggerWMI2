@@ -215,3 +215,51 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 **Benefits**: Clean logging output, enhanced system compatibility, SOE configuration support, maintained efficiency
 **Applied to**: Get-PowerStatusMetrics function in Plogger.ps1
 **Use Case**: Systems without Lenovo power management drivers, custom enterprise configurations, varying Windows installations
+[2025-06-05 14:42:00] - Version Management System for Plogger Project
+## Version Number Management Instructions
+
+### Current Version: 2.0.0
+
+### Version Format: X.Y.Z (Semantic Versioning)
+- **X (Major Version)**: Manual decision by project owner based on release schedule and significant milestones
+- **Y (Minor Version)**: New features, major enhancements, significant functionality additions (increment by 0.1.0)
+- **Z (Patch Version)**: Small changes, minor updates, bug fixes (increment by 0.0.1)
+
+### Version Update Rules
+1. **Bug Fixes & Small Updates**: Increment patch version (e.g., 2.0.0 → 2.0.1)
+   - Temperature calibration adjustments
+   - Minor UI improvements
+   - Small performance optimizations
+   - Documentation updates
+
+2. **New Features & Major Enhancements**: Increment minor version (e.g., 2.0.0 → 2.1.0)
+   - New monitoring capabilities
+   - Additional chart types
+   - New GPU vendor support
+   - Significant algorithm improvements
+
+3. **Major Releases**: Project owner decision for major version increment (e.g., 2.0.0 → 3.0.0)
+   - Complete feature overhauls
+   - Breaking changes
+   - Major architecture changes
+   - Release milestones
+
+### Implementation Instructions
+- **Location**: Update version number in header comment of `Plogger/Plogger.ps1`
+- **Format**: `# Version: X.Y.Z`
+- **Line**: Should be placed on line 3 after the project description
+- **Update Requirement**: Every commit that introduces changes should update the version number appropriately
+
+### Version Update Process
+1. Identify change type (bug fix, new feature, or major release)
+2. Update version number in `Plogger/Plogger.ps1` header comment
+3. Document the change in memory bank progress or decision log
+4. Include version change in commit message
+
+### Examples of Version Increments
+- **2.0.0 → 2.0.1**: Fixed temperature calibration range from 60-97°C to 85-97°C
+- **2.0.0 → 2.1.0**: Added AMD GPU monitoring support
+- **2.0.0 → 3.0.0**: Complete rewrite with new architecture (project owner decision)
+
+### Current Version History
+- **2.0.0**: Initial version with enhanced CPU temperature calibration system and 105°C fixed chart scaling

@@ -1,5 +1,6 @@
 ###################################################################################
 # Plogger - A PowerShell script for logging system performance metrics and exporting them to CSV files.
+# Version: 2.0.0
 # Copyright (c) 2025 Lifei Yu
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
