@@ -87,14 +87,10 @@ function Convert-RawTemperatureToCelsius {
             
             # Apply model-specific temperature correction with safety bounds
             if ($null -ne $convertedTemp -and $tempCorrection -ne 0) {
-                # Only apply correction if current temperature is below 97°C and above 60°C
-                # This prevents overcorrection at very high or low temperatures
-                if ($convertedTemp -lt 97 -and $convertedTemp -gt 60) {
+                # Only apply correction if current temperature is between 85°C and 97°C
+                # This targets the high-temperature range where ThinkPad P1 thermal zone inaccuracy is most problematic
+                if ($convertedTemp -ge 85 -and $convertedTemp -lt 97) {
                     $convertedTemp = [math]::Round($convertedTemp + $tempCorrection, 3)
-                    # Ensure corrected temperature doesn't go below reasonable minimum
-                    if ($convertedTemp -lt 30) {
-                        $convertedTemp = [math]::Round($convertedTemp - $tempCorrection, 3) # Revert correction if result is too low
-                    }
                 }
             }
         }
@@ -1375,15 +1371,11 @@ $reportContent = @"
                 for (const model in temperatureCorrections) {
                     if (systemVersion.includes(model)) {
                         const correction = temperatureCorrections[model];
-                        // Only apply correction if current temperature is below 97°C and above 60°C
-                        // This prevents overcorrection at very high or low temperatures
-                        if (convertedTemp < 97 && convertedTemp > 60) {
+                        // Only apply correction if current temperature is between 85°C and 97°C
+                        // This targets the high-temperature range where ThinkPad P1 thermal zone inaccuracy is most problematic
+                        if (convertedTemp >= 85 && convertedTemp < 97) {
                             const correctedTemp = convertedTemp + correction;
-                            // Ensure corrected temperature doesn't go below reasonable minimum (30°C)
-                            if (correctedTemp >= 30) {
-                                convertedTemp = Math.round(correctedTemp * 1000) / 1000;
-                            }
-                            // If correction would result in temp below 30°C, keep original reading
+                            convertedTemp = Math.round(correctedTemp * 1000) / 1000;
                         }
                         break;
                     }

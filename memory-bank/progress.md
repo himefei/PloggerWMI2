@@ -494,3 +494,30 @@ Status: ✅ COMPLETED
 - Robust fallback mechanisms ensuring some level of power information capture
 - Maintained logging efficiency with minimal performance impact
 - Improved user experience with descriptive fallback values instead of generic errors
+[2025-06-05 11:37:00] - Refined CPU Temperature Calibration for ThinkPad P1 High-Temperature Range
+## Completed Tasks
+
+* **Refined Temperature Range**: Updated ThinkPad P1 calibration to target high-temperature range (85°C-97°C) where thermal zone inaccuracy is most problematic
+* **Simplified Logic**: Removed <30°C condition check as unrealistic for real-world CPU temperatures
+* **Focused Correction**: -25°C correction now only applies in the critical thermal zone where readings are most inaccurate
+* **Enhanced Precision**: More targeted approach reduces unnecessary corrections at moderate temperatures
+* **Dual-Environment Consistency**: Applied refined logic in both PowerShell statistics and JavaScript chart processing
+
+## Updated Temperature Correction Logic
+- **Below 85°C**: No correction applied (thermal zone readings are reasonably accurate at moderate temperatures)
+- **85°C - 97°C**: Apply -25°C correction (critical range where ThinkPad P1 thermal zone reports significantly higher than actual)
+- **97°C and above**: No correction applied (preserve thermal safety readings and potential throttling indicators)
+- **Removed**: 30°C minimum validation (unrealistic constraint for CPU temperatures)
+
+## Technical Implementation Changes
+- **PowerShell Side**: Updated condition to `if ($convertedTemp -ge 85 -and $convertedTemp -lt 97)`
+- **JavaScript Side**: Updated condition to `if (convertedTemp >= 85 && convertedTemp < 97)`
+- **Simplified Flow**: Removed nested validation checks for more streamlined correction application
+- **Focused Application**: Correction now specifically targets the problematic high-temperature range
+
+## Implementation Benefits
+- More precise correction targeting the actual problem range where ThinkPad P1 thermal sensors are inaccurate
+- Simplified logic eliminates edge case handling for unrealistic temperature scenarios
+- Preserves accuracy at moderate temperatures where thermal zone readings are reliable
+- Maintains thermal safety awareness at critical temperatures (≥97°C)
+- Consistent behavior across all report components (statistics and charts)
