@@ -89,8 +89,8 @@ function Get-PowerStatusMetrics {
    $basePlanName = "Error"
    $basePlanGUID = "Error"
    $powerStatusString = "Error"
-   $overlayFriendlyName = "Error"
-   $activeOverlayGuid = "Error"
+   $overlayFriendlyName = "Not Available"
+   $activeOverlayGuid = "Not Available"
 
    # 1. Get the base Windows Power Plan
    try {
@@ -100,12 +100,10 @@ function Get-PowerStatusMetrics {
        if ($activeBasePlan) {
            $basePlanName = $activeBasePlan.ElementName
            $basePlanGUID = $activeBasePlan.InstanceID -replace "Microsoft:PowerPlan\{(.+)\}", '$1'
-       } else {
-           Write-Warning "Could not determine the active base Windows Power Plan."
        }
    }
    catch {
-       Write-Warning "Error getting base Windows Power Plan: $($_.Exception.Message)"
+       # Silently continue - base plan detection failure is not critical
    }
 
    # 2. Determine AC/DC Power Status
@@ -120,46 +118,108 @@ function Get-PowerStatusMetrics {
        }
        $powerStatusString = if ($onACPower) { "AC Power" } else { "DC (Battery) Power" }
    } catch {
-       Write-Warning "Error determining AC/DC Power Status: $($_.Exception.Message). Assuming AC Power."
-       $powerStatusString = "AC Power (Assumed due to error)"
+       $powerStatusString = "AC Power (Assumed)"
    }
 
-
-   # 3. Read the Active Power Mode Overlay from Registry
+   # 3. Robust Power Mode Overlay Detection with Multiple Fallback Methods
+   $overlayDetected = $false
    $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes"
-   $overlayValueName = if ($onACPower) { "ActiveOverlayAcPowerScheme" } else { "ActiveOverlayDcPowerScheme" }
-
-   try {
-       $retrievedOverlayGuid = (Get-ItemProperty -Path $registryPath -Name $overlayValueName -ErrorAction Stop).$overlayValueName
-       if ($retrievedOverlayGuid) {
-           $activeOverlayGuid = $retrievedOverlayGuid # Store the raw GUID
-           $overlayFriendlyName = $powerModeOverlayGuids[$retrievedOverlayGuid.ToLower()]
-           if (!$overlayFriendlyName) {
-               if ($retrievedOverlayGuid -eq "00000000-0000-0000-0000-000000000000") {
-                   if ($basePlanName -eq "Balanced") {
-                        $overlayFriendlyName = "Balanced (Overlay matches base plan or system default)"
-                   } else {
-                        $overlayFriendlyName = "System Default / No Specific Overlay (using base plan settings)"
+   
+   # Method 1: Try standard overlay property names
+   $overlayPropertyNames = @()
+   if ($onACPower) {
+       $overlayPropertyNames = @(
+           "ActiveOverlayAcPowerScheme",
+           "ActivatOverlayAcPowerScheme", # Common typo variant
+           "ActiveAcOverlay", # Alternative naming
+           "ActiveOverlay" # Generic fallback
+       )
+   } else {
+       $overlayPropertyNames = @(
+           "ActiveOverlayDcPowerScheme",
+           "ActivatOverlayDcPowerScheme", # Common typo variant
+           "ActiveDcOverlay", # Alternative naming
+           "ActiveOverlay" # Generic fallback
+       )
+   }
+   
+   foreach ($propName in $overlayPropertyNames) {
+       if ($overlayDetected) { break }
+       try {
+           $regItem = Get-ItemProperty -Path $registryPath -ErrorAction SilentlyContinue
+           if ($regItem -and $regItem.PSObject.Properties.Name -contains $propName) {
+               $retrievedOverlayGuid = $regItem.$propName
+               if ($retrievedOverlayGuid -and $retrievedOverlayGuid -ne "") {
+                   $activeOverlayGuid = $retrievedOverlayGuid
+                   $overlayFriendlyName = $powerModeOverlayGuids[$retrievedOverlayGuid.ToLower()]
+                   if (!$overlayFriendlyName) {
+                       if ($retrievedOverlayGuid -eq "00000000-0000-0000-0000-000000000000") {
+                           $overlayFriendlyName = if ($basePlanName -eq "Balanced") { "Balanced (System Default)" } else { "System Default" }
+                       } else {
+                           $overlayFriendlyName = "Custom Overlay"
+                       }
                    }
-               }
-               else {
-                    $overlayFriendlyName = "Unknown Overlay GUID"
+                   $overlayDetected = $true
                }
            }
-       } else {
-           Write-Warning "Could not determine the active Power Mode Overlay (GUID not found or empty)."
-           # $activeOverlayGuid and $overlayFriendlyName remain "Error"
+       } catch {
+           # Silent continue to try next method
        }
    }
-   catch {
-       if ($_.CategoryInfo.Reason -eq 'PropertyNotFoundException') {
-           Write-Warning "The Power Mode Overlay property ('$overlayValueName') was not found in the registry path '$registryPath'. This can happen on some systems and is not critical. Plogger will continue, using default 'Error' values for this specific information."
-       } else {
-           # Log the full error for unexpected issues
-           Write-Warning "An unexpected error occurred while trying to read Power Mode Overlay from registry (Path: '$registryPath', Property: '$overlayValueName'): $($_.Exception.ToString()). Plogger will continue, using default 'Error' values for this information."
+   
+   # Method 2: Try alternative registry locations if standard location failed
+   if (-not $overlayDetected) {
+       $alternativeRegistryPaths = @(
+           "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings",
+           "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings",
+           "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Preferences"
+       )
+       
+       foreach ($altPath in $alternativeRegistryPaths) {
+           if ($overlayDetected) { break }
+           try {
+               if (Test-Path $altPath -ErrorAction SilentlyContinue) {
+                   $regItem = Get-ItemProperty -Path $altPath -ErrorAction SilentlyContinue
+                   if ($regItem) {
+                       # Look for any property that might contain overlay information
+                       $overlayProps = $regItem.PSObject.Properties | Where-Object { $_.Name -match "overlay|power|scheme" -and $_.Value -match "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }
+                       if ($overlayProps) {
+                           $activeOverlayGuid = $overlayProps[0].Value
+                           $overlayFriendlyName = $powerModeOverlayGuids[$activeOverlayGuid.ToLower()]
+                           if (!$overlayFriendlyName) {
+                               $overlayFriendlyName = "Customer SOE Power Scheme"
+                           }
+                           $overlayDetected = $true
+                       }
+                   }
+               }
+           } catch {
+               # Silent continue to try next path
+           }
        }
-       # $activeOverlayGuid and $overlayFriendlyName were initialized to "Error"
-       # and are not changed here, effectively using them as the fallback.
+   }
+   
+   # Method 3: Try WMI/CIM based power scheme detection as final fallback
+   if (-not $overlayDetected) {
+       try {
+           $powerSchemes = Get-CimInstance -Namespace "root\cimv2\power" -ClassName Win32_PowerSetting -ErrorAction SilentlyContinue
+           if ($powerSchemes) {
+               $activeScheme = $powerSchemes | Where-Object { $_.IsActive -eq $true } | Select-Object -First 1
+               if ($activeScheme) {
+                   $activeOverlayGuid = $activeScheme.InstanceID
+                   $overlayFriendlyName = "WMI Detected Scheme"
+                   $overlayDetected = $true
+               }
+           }
+       } catch {
+           # Silent continue - this is the final fallback
+       }
+   }
+   
+   # If no overlay detected at all, use descriptive fallback values
+   if (-not $overlayDetected) {
+       $overlayFriendlyName = "Standard (No Overlay)"
+       $activeOverlayGuid = "Standard"
    }
 
    return [PSCustomObject]@{

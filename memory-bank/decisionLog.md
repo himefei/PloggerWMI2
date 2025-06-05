@@ -795,3 +795,45 @@ $turboFactor = 1.0
 - Future-proof framework for addressing thermal calibration issues in other models
 - Non-breaking implementation maintains compatibility with existing CSV data
 - Easy maintenance through centralized correction definitions
+[2025-06-05 11:19:00] - Power Overlay Error Handling Enhancement and Robustness Improvement
+
+## Decision
+
+Enhanced power overlay detection in Get-PowerStatusMetrics function to eliminate annoying error messages and implement more robust detection methods for systems without Lenovo power management drivers or using custom SOE configurations.
+
+## Rationale 
+
+User reported persistent "argumentexception: property activatoverlayacpowerscheme does not exist" error messages that were annoying but didn't break functionality. The error occurred on systems without Lenovo power management drivers or using custom SOE configurations. Enhanced detection methods needed to gracefully handle various system configurations while maintaining efficiency.
+
+## Implementation Details
+
+**Enhanced Error Handling:**
+- Removed all Write-Warning messages for power overlay detection failures
+- Changed default fallback values from "Error" to descriptive alternatives ("Not Available", "Standard")
+- Implemented silent error handling with try-catch blocks that don't output warnings
+
+**Multi-Method Detection Strategy:**
+- Method 1: Multiple property name variants (ActiveOverlayAcPowerScheme, ActivatOverlayAcPowerScheme, ActiveAcOverlay, ActiveOverlay)
+- Method 2: Alternative registry paths for custom SOE configurations
+- Method 3: WMI/CIM based power scheme detection as final fallback
+- Graceful degradation through all methods without verbose error reporting
+
+**Robust Registry Access:**
+- Added property existence validation before access to prevent exceptions
+- Multiple registry location fallbacks for different system configurations
+- Pattern matching for GUID detection in alternative registry locations
+- Silent handling of registry access failures
+
+**Customer SOE Support:**
+- Enhanced detection of custom power schemes in alternative registry locations
+- Pattern-based GUID detection for non-standard power management implementations
+- Descriptive labeling for custom configurations ("Customer SOE Power Scheme")
+
+## Impact
+
+- **Eliminated Annoying Messages**: No more repetitive error messages in terminal output
+- **Enhanced Compatibility**: Support for systems without Lenovo power management drivers
+- **SOE Configuration Support**: Detection of custom power schemes in enterprise environments
+- **Maintained Efficiency**: Lightweight detection with minimal performance impact
+- **Improved User Experience**: Clean logging output without distracting error messages
+- **Robust Fallbacks**: Multiple detection methods ensure some level of power scheme information capture

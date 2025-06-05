@@ -188,3 +188,30 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - Reporter_for_Process.ps1: Console encoding, drag & drop emoji, file writing
 
 **Benefit**: Proper display of emojis and special characters across all browsers, professional appearance of HTML reports
+[2025-06-05 11:19:00] - Robust Power Overlay Detection Pattern
+**Pattern**: Multi-tier fallback system for power overlay detection with silent error handling
+**Implementation**: 
+- Three-method detection strategy: standard registry properties → alternative registry locations → WMI/CIM fallback
+- Property name variant checking for different system configurations and common typos
+- Silent error handling with try-catch blocks that don't output warnings to maintain clean logging
+- Alternative registry path checking for custom SOE configurations
+- Pattern-based GUID detection in non-standard registry locations
+- Descriptive fallback values instead of generic error messages
+
+**Key Features**:
+- Method 1: Multiple property name variants (ActiveOverlayAcPowerScheme, ActivatOverlayAcPowerScheme, ActiveAcOverlay, ActiveOverlay)
+- Method 2: Alternative registry paths (PowerSettings, FlyoutMenuSettings, Explorer Preferences)
+- Method 3: WMI/CIM power scheme detection for final fallback
+- Property existence validation before registry access to prevent exceptions
+- GUID pattern matching for detecting power schemes in unexpected locations
+- Silent degradation through all methods without verbose error reporting
+
+**Error Handling Strategy**:
+- Replace Write-Warning with silent try-catch blocks
+- Use descriptive fallback values ("Not Available", "Standard", "Customer SOE Power Scheme")
+- Graceful degradation that doesn't interrupt logging performance
+- Property existence checking before access to prevent PropertyNotFoundException
+
+**Benefits**: Clean logging output, enhanced system compatibility, SOE configuration support, maintained efficiency
+**Applied to**: Get-PowerStatusMetrics function in Plogger.ps1
+**Use Case**: Systems without Lenovo power management drivers, custom enterprise configurations, varying Windows installations

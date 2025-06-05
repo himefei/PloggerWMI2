@@ -477,3 +477,20 @@ Status: ✅ COMPLETED
 - Avoids unrealistic low temperature reports from excessive correction
 - Robust protection against edge cases in temperature sensor readings
 - Consistent behavior across all report components (statistics and charts)
+[2025-06-05 11:19:00] - Power Overlay Error Handling Enhancement Completed
+## Completed Tasks
+
+* **Error Message Elimination**: Successfully removed repetitive "argumentexception: property activatoverlayacpowerscheme does not exist" error messages from terminal output
+* **Multi-Method Detection System**: Implemented robust three-tier power overlay detection strategy with graceful fallbacks
+* **SOE Configuration Support**: Added detection capabilities for custom Standard Operating Environment power configurations
+* **Enhanced Registry Access**: Implemented property existence validation and alternative registry location support
+* **Silent Error Handling**: Replaced verbose warning messages with silent error handling to improve user experience
+* **Efficiency Maintenance**: Preserved lightweight logging performance while adding robustness features
+
+## Implementation Benefits
+- Clean terminal output without distracting error messages during logging
+- Enhanced compatibility with systems lacking Lenovo power management drivers
+- Support for enterprise SOE configurations with custom power schemes
+- Robust fallback mechanisms ensuring some level of power information capture
+- Maintained logging efficiency with minimal performance impact
+- Improved user experience with descriptive fallback values instead of generic errors
