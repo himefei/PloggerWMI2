@@ -429,14 +429,19 @@ foreach ($processName in $allDropdownNames) {
         $procEntry = $processList[$processName]
         $count = $procEntry.Count
         if ($count -eq 0) { continue } # Skip if no data points
-        $cpuPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.CPUPercent }
-        $ramPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.RAM_MB }
-        $dedicatedVRAMPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.GPUDedicatedMemoryMB }
-        $sharedVRAMPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.GPUSharedMemoryMB }
-        $readIOPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.IOReadBytesPerSec }
-        $writeIOPoints = $procEntry.RawData.Values | ForEach-Object { [double]$_.IOWriteBytesPerSec }
-        $color = if (($cpuPoints | Measure-Object -Average).Average -gt 30) {'rgb(190, 0, 0)'}
-                elseif (($cpuPoints | Measure-Object -Average).Average -ge 10) {'rgb(255, 204, 0)'}
+
+        # To ensure correct chart alignment, iterate through the global sorted timestamps
+        # and look up the data for the current process at each timestamp.
+        $cpuPoints = $timestamps | ForEach-Object { if ($procEntry.RawData.ContainsKey($_)) { [double]$procEntry.RawData[$_].CPUPercent } else { $null } }
+        $ramPoints = $timestamps | ForEach-Object { if ($procEntry.RawData.ContainsKey($_)) { [double]$procEntry.RawData[$_].RAM_MB } else { $null } }
+        $dedicatedVRAMPoints = $timestamps | ForEach-Object { if ($procEntry.RawData.ContainsKey($_)) { [double]$procEntry.RawData[$_].GPUDedicatedMemoryMB } else { $null } }
+        $sharedVRAMPoints = $timestamps | ForEach-Object { if ($procEntry.RawData.ContainsKey($_)) { [double]$procEntry.RawData[$_].GPUSharedMemoryMB } else { $null } }
+        $readIOPoints = $timestamps | ForEach-Object { if ($procEntry.RawData.ContainsKey($_)) { [double]$procEntry.RawData[$_].IOReadBytesPerSec } else { $null } }
+        $writeIOPoints = $timestamps | ForEach-Object { if ($procEntry.RawData.ContainsKey($_)) { [double]$procEntry.RawData[$_].IOWriteBytesPerSec } else { $null } }
+        
+        $avgCPU = ($cpuPoints | Measure-Object -Average).Average
+        $color = if ($avgCPU -and $avgCPU -gt 30) {'rgb(190, 0, 0)'}
+                elseif ($avgCPU -and $avgCPU -ge 10) {'rgb(255, 204, 0)'}
                 else {'rgb(0, 130, 0)'}
     }
 
