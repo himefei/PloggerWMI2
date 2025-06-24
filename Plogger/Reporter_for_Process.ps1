@@ -2,7 +2,12 @@
 # Requires -Modules Microsoft.PowerShell.Utility
 
 # Set console encoding to UTF-8 to properly handle special characters
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {
+    # Ignore console encoding errors in environments where console handle is invalid
+    Write-Verbose "Console encoding could not be set: $($_.Exception.Message)"
+}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Import required assemblies for multithreading
