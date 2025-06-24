@@ -858,7 +858,9 @@ function calculateTrendLine(data) {
     // Generate curved trend line points
     return data.map((val, idx) => {
         if (val === null || val === undefined || isNaN(val)) return null;
-        return evaluatePolynomial(coefficients, idx);
+        const trendValue = evaluatePolynomial(coefficients, idx);
+        // Prevent trend line from going below 0 for display clarity
+        return Math.max(0, trendValue);
     });
 }
 
