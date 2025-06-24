@@ -1092,6 +1092,92 @@ if ($data.Count -gt 0) {
 "@
 }
 
+# --- Storage Statistics Section ---
+Write-Host "Calculating Storage Statistics..."
+$storageStatisticsSectionHtml = ""
+if ($data.Count -gt 0) {
+    # Extract storage information from the first row (captured once during initial detection)
+    $firstRow = $data[0]
+    $storageDevicesData = $firstRow.StorageDevicesData
+    
+    Write-Verbose "Storage devices data from CSV: $storageDevicesData"
+    
+    if ($null -ne $storageDevicesData -and $storageDevicesData -ne "" -and $storageDevicesData -ne "N/A") {
+        try {
+            # Handle both single device (object) and multiple devices (array) cases
+            $storageDevices = $null
+            
+            # Try to parse as JSON
+            $parsedJson = $storageDevicesData | ConvertFrom-Json
+            
+            # Check if it's a single object or array
+            if ($parsedJson -is [array]) {
+                $storageDevices = $parsedJson
+            } else {
+                # Single device - wrap in array for consistent processing
+                $storageDevices = @($parsedJson)
+            }
+            
+            Write-Verbose "Parsed storage devices count: $($storageDevices.Count)"
+            
+            if ($storageDevices -and $storageDevices.Count -gt 0) {
+                $storageStatsHtml = ""
+                
+                foreach ($storage in $storageDevices) {
+                    Write-Verbose "Processing storage device: $($storage.DriveLetter) - $($storage.Label)"
+                    $storageStatsHtml += "<li><strong>$($storage.DriveLetter) ($($storage.Label)):</strong> $($storage.CapacityGB) GB capacity, $($storage.UsedGB) GB used ($($storage.PercentUsed)%)</li>`n            "
+                }
+                
+                $storageStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Storage Statistics</h2>
+        <ul>
+            $storageStatsHtml
+        </ul>
+        <ul>
+            <li><em>Storage information captured once at the beginning of the logging session.</em></li>
+            <li><em>Only internal storage devices are shown (removable storage excluded).</em></li>
+        </ul>
+    </div>
+"@
+            } else {
+                Write-Verbose "No storage devices found after parsing"
+                $storageStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Storage Statistics</h2>
+        <p>No internal storage devices detected.</p>
+    </div>
+"@
+            }
+        } catch {
+            Write-Warning "Failed to process storage device data: $($_.Exception.Message)"
+            Write-Verbose "Raw storage data that failed to parse: $storageDevicesData"
+            $storageStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Storage Statistics</h2>
+        <p>Error processing storage device data: $($_.Exception.Message)</p>
+    </div>
+"@
+        }
+    } else {
+        Write-Verbose "No storage device data available in CSV"
+        $storageStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Storage Statistics</h2>
+        <p>No storage device data available.</p>
+    </div>
+"@
+    }
+} else {
+    $storageStatisticsSectionHtml = @"
+    <div class="stats-section">
+        <h2>Storage Statistics</h2>
+        <p>No data available for storage statistics.</p>
+    </div>
+"@
+}
+Write-Host "Storage Statistics Calculation Complete."
+
 # --- Network Statistics Section ---
 Write-Host "Calculating Network Statistics..."
 $networkStatisticsSectionHtml = ""
@@ -1231,6 +1317,7 @@ $reportContent = @"
 
     $overallStatsSummaryHtml
     $powerStatisticsSectionHtml
+    $storageStatisticsSectionHtml
     $networkStatisticsSectionHtml
 
     <div class="drag-instructions">

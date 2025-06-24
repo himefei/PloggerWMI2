@@ -837,3 +837,52 @@ User reported persistent "argumentexception: property activatoverlayacpowerschem
 - **Maintained Efficiency**: Lightweight detection with minimal performance impact
 - **Improved User Experience**: Clean logging output without distracting error messages
 - **Robust Fallbacks**: Multiple detection methods ensure some level of power scheme information capture
+[2025-06-24 10:20:00] - Storage Usage Logging Feature Implementation
+
+## Decision
+
+Added storage usage logging capability to capture storage device capacity and usage information once at the beginning of the logging process, with display in the HTML report's Storage Statistics section.
+
+## Rationale 
+
+User requested storage usage logging feature with the following specific requirements:
+- Log storage usage only at the beginning of the logging process (not continuously like other metrics)
+- Storage usage unlikely to change significantly during a 10-minute logging session
+- Query storage capacity and used space during initial detection phase alongside GPU detection
+- Display storage statistics in HTML report above network statistics section
+- Show storage name, capacity (GB), used capacity (GB), and percentage used for internal storage only
+
+## Implementation Details
+
+**Storage Detection Function:**
+- Created Get-StorageInformation() function using Win32_LogicalDisk, Win32_DiskDrive, and partition mapping
+- Filters for DriveType = 3 (internal hard drives) to exclude removable storage
+- Captures drive letter, label, model, interface, capacity, used space, free space, and percentage
+- Implements robust error handling for individual drive processing failures
+
+**Data Collection Integration:**
+- Added storage detection call in Capture-ResourceUsage function after GPU detection
+- One-time collection approach during system initialization phase
+- Storage information stored as JSON in StorageDevicesData CSV field
+- Efficient approach since storage capacity doesn't change during short logging sessions
+
+**HTML Report Enhancement:**
+- Added Storage Statistics section positioned between Power Statistics and Network Statistics
+- Displays drive letter, label, capacity in GB, used capacity in GB, and percentage used
+- Professional formatting consistent with existing statistics sections
+- Includes explanatory footnotes about data collection methodology
+- Graceful handling of systems without storage data availability
+
+**Technical Approach:**
+- JSON encoding of storage data for CSV storage efficiency
+- One-time capture reduces logging overhead compared to continuous monitoring
+- Logical positioning in report flow for hardware overview context
+- Maintains backward compatibility with existing CSV structure
+
+## Impact
+
+- **Enhanced Hardware Monitoring**: Comprehensive storage capacity awareness in hardware reports
+- **Efficient Data Collection**: One-time capture approach minimizes performance impact during logging
+- **User Experience**: Clear storage utilization visibility for performance analysis and capacity planning
+- **Future Extensible**: Framework ready for additional storage metrics if needed (SMART data, temperature, etc.)
+- **Consistent Design**: Follows established patterns for statistics sections and data presentation

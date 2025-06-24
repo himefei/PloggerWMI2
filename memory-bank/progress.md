@@ -555,3 +555,27 @@ Status: ✅ COMPLETED
 - Easy identification of release scope and compatibility
 - Professional software development practices
 - Historical change documentation for troubleshooting
+[2025-06-24 10:20:00] - Storage Usage Logging Feature Implementation Completed
+## Completed Tasks
+
+* **Storage Detection Function**: Created Get-StorageInformation function to detect internal storage devices with capacity and usage information
+* **Storage Data Collection**: Added storage detection during system initialization phase alongside GPU detection
+* **CSV Data Integration**: Added StorageDevicesData field to CSV output containing JSON-encoded storage information
+* **Reporter Enhancement**: Added Storage Statistics section to HTML report displaying drive letter, capacity, used space, and percentage for all internal drives
+* **HTML Report Integration**: Positioned Storage Statistics section between Power Statistics and Network Statistics for logical flow
+
+## Key Features Implemented
+- Detection of internal storage devices only (removable storage excluded)
+- Capacity reporting in GB with 2 decimal precision
+- Used space calculation and percentage utilization
+- Drive letter, label, model, and file system information capture
+- One-time collection during initialization (storage doesn't change during 10-minute logging sessions)
+- Graceful error handling for systems without storage access
+- Professional HTML formatting consistent with existing statistics sections
+
+## Implementation Benefits
+- Enhanced hardware monitoring visibility with storage capacity awareness
+- Efficient one-time data collection approach (storage capacity doesn't change during logging)
+- Clear presentation of storage utilization for performance analysis
+- Future-extensible framework for additional storage metrics if needed
+- Maintains compatibility with existing CSV structure and reporting tools

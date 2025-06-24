@@ -364,6 +364,83 @@ function Get-GPUInformation {
     return $gpuInfo
 }
 
+# Function to get storage device information
+function Get-StorageInformation {
+    Write-Verbose "Detecting storage devices..."
+    $storageDevices = @()
+    
+    try {
+        # Get storage devices using Win32_LogicalDisk for capacity information
+        $logicalDisks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType = 3" -ErrorAction Stop
+        
+        # Get physical disk information for device details
+        $physicalDisks = Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction Stop
+        
+        # Get disk partition information to map logical to physical
+        $diskPartitions = Get-CimInstance -ClassName Win32_DiskPartition -ErrorAction Stop
+        $logicalDiskToPartition = Get-CimInstance -ClassName Win32_LogicalDiskToPartition -ErrorAction Stop
+        
+        foreach ($logicalDisk in $logicalDisks) {
+            try {
+                # Skip removable drives (network drives, optical drives, etc.)
+                if ($logicalDisk.DriveType -ne 3) { continue }
+                
+                $capacityGB = 0
+                $usedGB = 0
+                $freeGB = 0
+                $percentUsed = 0
+                
+                if ($logicalDisk.Size -and $logicalDisk.Size -gt 0) {
+                    $capacityGB = [math]::Round($logicalDisk.Size / 1GB, 2)
+                    $freeGB = [math]::Round($logicalDisk.FreeSpace / 1GB, 2)
+                    $usedGB = [math]::Round(($logicalDisk.Size - $logicalDisk.FreeSpace) / 1GB, 2)
+                    $percentUsed = [math]::Round((($logicalDisk.Size - $logicalDisk.FreeSpace) / $logicalDisk.Size) * 100, 1)
+                }
+                
+                # Try to get physical disk information
+                $physicalDiskModel = "Unknown"
+                $physicalDiskInterface = "Unknown"
+                
+                # Find the physical disk associated with this logical disk
+                $partition = $logicalDiskToPartition | Where-Object { $_.Dependent -like "*$($logicalDisk.DeviceID)*" } | Select-Object -First 1
+                if ($partition) {
+                    $partitionInfo = $diskPartitions | Where-Object { $_.DeviceID -eq ($partition.Antecedent -split '=')[1].Trim('"') } | Select-Object -First 1
+                    if ($partitionInfo) {
+                        $physicalDisk = $physicalDisks | Where-Object { $_.Index -eq $partitionInfo.DiskIndex } | Select-Object -First 1
+                        if ($physicalDisk) {
+                            $physicalDiskModel = if ($physicalDisk.Model) { $physicalDisk.Model } else { "Unknown" }
+                            $physicalDiskInterface = if ($physicalDisk.InterfaceType) { $physicalDisk.InterfaceType } else { "Unknown" }
+                        }
+                    }
+                }
+                
+                $storageDevice = [PSCustomObject]@{
+                    DriveLetter = $logicalDisk.DeviceID
+                    Label = if ($logicalDisk.VolumeName) { $logicalDisk.VolumeName } else { "Local Disk" }
+                    Model = $physicalDiskModel
+                    Interface = $physicalDiskInterface
+                    CapacityGB = $capacityGB
+                    UsedGB = $usedGB
+                    FreeGB = $freeGB
+                    PercentUsed = $percentUsed
+                    FileSystem = $logicalDisk.FileSystem
+                }
+                
+                $storageDevices += $storageDevice
+                Write-Verbose "Storage device detected: $($storageDevice.DriveLetter) - $($storageDevice.Label) ($($storageDevice.CapacityGB) GB, $($storageDevice.PercentUsed)% used)"
+                
+            } catch {
+                Write-Verbose "Failed to process storage device $($logicalDisk.DeviceID): $($_.Exception.Message)"
+            }
+        }
+        
+    } catch {
+        Write-Warning "Failed to detect storage devices: $($_.Exception.Message)"
+    }
+    
+    return $storageDevices
+}
+
 # Function to get NVIDIA GPU metrics using nvidia-smi
 function Get-NVIDIAMetrics {
     param (
@@ -494,6 +571,18 @@ function Capture-ResourceUsage {
     } else {
         foreach ($gpu in $script:gpuInfo.GPUDetails) {
             Write-Host "Found: $($gpu.Vendor) - $($gpu.Name) ($($gpu.VideoMemoryMB) MB VRAM)" -ForegroundColor Green
+        }
+    }
+
+    # --- Detect Storage Information ---
+    Write-Host "Detecting storage devices..." -ForegroundColor Cyan
+    $script:storageInfo = Get-StorageInformation
+    
+    if ($script:storageInfo.Count -eq 0) {
+        Write-Host "No internal storage devices detected." -ForegroundColor Yellow
+    } else {
+        foreach ($storage in $script:storageInfo) {
+            Write-Host "Found: $($storage.DriveLetter) - $($storage.Label) ($($storage.CapacityGB) GB, $($storage.PercentUsed)% used)" -ForegroundColor Green
         }
     }
 
@@ -1063,6 +1152,8 @@ function Capture-ResourceUsage {
                 NVIDIAGPUMemoryUtilization    = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.MemoryUtilization } else { $null }
                 NVIDIAGPUUtilization          = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.GPUUtilization } else { $null }
                 NVIDIAGPUPowerDraw            = if ($nvidiaGPUMetrics -and $nvidiaGPUMetrics.Available) { $nvidiaGPUMetrics.PowerDraw } else { $null }
+                # Storage Information - captured once during initial detection
+                StorageDevicesData            = if ($script:storageInfo) { ($script:storageInfo | ConvertTo-Json -Compress) } else { $null }
                 # Intel GPU Metrics - REMOVED: Consumer systems don't have Intel GPU monitoring tools
                 # Basic Intel GPU detection still available via GPUHasIntel and GPUIntelName fields above
             }

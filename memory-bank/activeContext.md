@@ -213,3 +213,26 @@ This file tracks the project's current status, including recent changes, current
 * Implemented silent error handling to prevent terminal message spam
 * Added descriptive fallback values instead of generic "Error" messages
 * Enhanced compatibility with systems lacking Lenovo power management drivers
+[2025-06-24 10:20:00] - Storage Usage Logging Feature Implementation Complete
+## Current Focus
+
+* Successfully implemented storage usage logging feature with one-time collection approach during system initialization
+* Added Storage Statistics section to HTML reports positioned above Network Statistics for logical hardware overview flow
+* Enhanced Plogger monitoring capabilities with storage capacity and usage awareness for performance analysis
+
+## Recent Changes
+
+* Created Get-StorageInformation function for internal storage device detection with capacity and usage metrics
+* Added storage detection call during system initialization phase alongside existing GPU detection
+* Integrated StorageDevicesData field into CSV output with JSON-encoded storage information
+* Enhanced Reporter.ps1 with Storage Statistics section displaying drive letter, capacity, used space, and percentage
+* Positioned Storage Statistics between Power Statistics and Network Statistics in HTML report layout
+* Applied consistent styling and error handling patterns following established project conventions
+
+## Implementation Highlights
+
+* Efficient one-time data collection approach since storage capacity doesn't change during short logging sessions
+* Robust error handling with graceful degradation when storage information unavailable
+* Professional HTML formatting matching existing statistics section patterns
+* Exclusion of removable storage devices focusing only on internal storage for system performance context
+* Future-extensible framework ready for additional storage metrics if needed
