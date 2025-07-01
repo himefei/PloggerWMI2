@@ -450,35 +450,20 @@ foreach ($processName in $allDropdownNames) {
                 else {'rgb(0, 130, 0)'}
     }
 
-    # Calculate Medians
-    function Get-Median($values) {
-        $filtered = $values | Where-Object { $_ -ne $null }
-        $sorted = $filtered | Sort-Object
-        $n = $sorted.Count
-        if ($n -eq 0) { return 0 }
-        if ($n % 2 -eq 1) {
-            return $sorted[([int][math]::Floor($n/2))]
-        } else {
-            $mid1 = $sorted[($n/2)-1]
-            $mid2 = $sorted[($n/2)]
-            return (($mid1 + $mid2) / 2)
-        }
-    }
-
-    $medianCPU = [math]::Round((Get-Median $cpuPoints), 2)
-    $medianRAM = [math]::Round((Get-Median $ramPoints), 2)
-    $medianDedicatedVRAM = [math]::Round((Get-Median $dedicatedVRAMPoints), 2)
-    $medianSharedVRAM = [math]::Round((Get-Median $sharedVRAMPoints), 2)
-
+    # Calculate Average and Max values (removing median)
     $avgCPUFormatted = [math]::Round((($cpuPoints | Measure-Object -Average).Average), 2)
+    $maxCPUFormatted = [math]::Round((($cpuPoints | Measure-Object -Maximum).Maximum), 2)
     $avgRAMFormatted = [math]::Round((($ramPoints | Measure-Object -Average).Average), 2)
+    $maxRAMFormatted = [math]::Round((($ramPoints | Measure-Object -Maximum).Maximum), 2)
     $avgDedicatedVRAMFormatted = [math]::Round((($dedicatedVRAMPoints | Measure-Object -Average).Average), 2)
+    $maxDedicatedVRAMFormatted = [math]::Round((($dedicatedVRAMPoints | Measure-Object -Maximum).Maximum), 2)
     $avgSharedVRAMFormatted = [math]::Round((($sharedVRAMPoints | Measure-Object -Average).Average), 2)
+    $maxSharedVRAMFormatted = [math]::Round((($sharedVRAMPoints | Measure-Object -Maximum).Maximum), 2)
 
     [void]$processStats.Add([PSCustomObject]@{
         Name   = $processName
         AvgCPU = $avgCPUFormatted
-        MedianCPU = $medianCPU
+        MaxCPU = $maxCPUFormatted
         Color  = $color
         IsAggregated = $isAggregated
     })
@@ -486,14 +471,14 @@ foreach ($processName in $allDropdownNames) {
     [void]$ramStats.Add([PSCustomObject]@{
         Name   = $processName
         AvgRAM = $avgRAMFormatted
-        MedianRAM = $medianRAM
+        MaxRAM = $maxRAMFormatted
         IsAggregated = $isAggregated
     })
 
     [void]$vramStatsDedicated.Add([PSCustomObject]@{
         Name = $processName
         AvgDedicatedVRAM = $avgDedicatedVRAMFormatted
-        MedianDedicatedVRAM = $medianDedicatedVRAM
+        MaxDedicatedVRAM = $maxDedicatedVRAMFormatted
         Color = $color
         IsAggregated = $isAggregated
     })
@@ -501,7 +486,7 @@ foreach ($processName in $allDropdownNames) {
     [void]$vramStatsShared.Add([PSCustomObject]@{
         Name = $processName
         AvgSharedVRAM = $avgSharedVRAMFormatted
-        MedianSharedVRAM = $medianSharedVRAM
+        MaxSharedVRAM = $maxSharedVRAMFormatted
         IsAggregated = $isAggregated
     })
 
@@ -517,10 +502,10 @@ foreach ($processName in $allDropdownNames) {
 }
 
 # Sort the final lists
-$processStats = $processStats | Sort-Object MedianCPU -Descending
-$ramStats = $ramStats | Sort-Object MedianRAM -Descending
-$vramStatsDedicated = $vramStatsDedicated | Sort-Object MedianDedicatedVRAM -Descending
-$vramStatsShared = $vramStatsShared | Sort-Object MedianSharedVRAM -Descending
+$processStats = $processStats | Sort-Object AvgCPU -Descending
+$ramStats = $ramStats | Sort-Object AvgRAM -Descending
+$vramStatsDedicated = $vramStatsDedicated | Sort-Object AvgDedicatedVRAM -Descending
+$vramStatsShared = $vramStatsShared | Sort-Object AvgSharedVRAM -Descending
 
 # Convert to JSON
 $listJson = $processStats | ConvertTo-Json -Compress
@@ -676,13 +661,13 @@ $chartJsRef
 
   <div class="controls">
     <label for="processSelect">Select Process:</label>
-    <select id="processSelect"><option value="">Sort by median CPU usage</option></select>
-    <label for="processSelectRam">Select by Median RAM:</label>
-    <select id="processSelectRam"><option value="">Sort by median RAM usage</option></select>
-    <label for="processSelectVram">Select by Median Dedicated VRAM:</label>
-    <select id="processSelectVram"><option value="">Sort by median Dedicated VRAM</option></select>
-    <label for="processSelectVramShared">Select by Median Shared VRAM:</label>
-    <select id="processSelectVramShared"><option value="">Sort by median Shared VRAM</option></select>
+    <select id="processSelect"><option value="">Sort by average CPU usage</option></select>
+    <label for="processSelectRam">Select by Average RAM:</label>
+    <select id="processSelectRam"><option value="">Sort by average RAM usage</option></select>
+    <label for="processSelectVram">Select by Average Dedicated VRAM:</label>
+    <select id="processSelectVram"><option value="">Sort by average Dedicated VRAM</option></select>
+    <label for="processSelectVramShared">Select by Average Shared VRAM:</label>
+    <select id="processSelectVramShared"><option value="">Sort by average Shared VRAM</option></select>
   </div>
   
   <!-- Charts container, hidden until selection -->
@@ -749,9 +734,9 @@ processList.forEach(p => {
   const o = document.createElement('option');
   o.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianCPU + '%)';
+    o.text = '**' + p.Name.toUpperCase() + '** (Avg: ' + p.AvgCPU + '%, Max: ' + p.MaxCPU + '%)';
   } else {
-    o.text = p.Name + ' (' + p.MedianCPU + '%)';
+    o.text = p.Name + ' (Avg: ' + p.AvgCPU + '%, Max: ' + p.MaxCPU + '%)';
   }
   o.style.color = p.Color;
   sel.appendChild(o);
@@ -760,15 +745,15 @@ processList.forEach(p => {
 const ramList = $ramListJson;
 const ramSel = document.getElementById('processSelectRam');
 // Reset and add default option
-ramSel.innerHTML = '<option value="">Sort by median RAM usage</option>';
+ramSel.innerHTML = '<option value="">Sort by average RAM usage</option>';
 // Add options with color coding
 ramList.forEach(p => {
   const o2 = document.createElement('option');
   o2.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o2.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianRAM + 'MB)';
+    o2.text = '**' + p.Name.toUpperCase() + '** (Avg: ' + p.AvgRAM + 'MB, Max: ' + p.MaxRAM + 'MB)';
   } else {
-    o2.text = p.Name + ' (' + p.MedianRAM + 'MB)';
+    o2.text = p.Name + ' (Avg: ' + p.AvgRAM + 'MB, Max: ' + p.MaxRAM + 'MB)';
   }
   if (p.AvgRAM > 1000) o2.style.color = 'rgb(190, 0, 0)';
   else if (p.AvgRAM >= 300) o2.style.color = 'rgb(255, 204, 0)';
@@ -779,15 +764,15 @@ ramList.forEach(p => {
 const vramListDedicated = $vramDedicatedJson;
 const vramSel = document.getElementById('processSelectVram');
 // Reset and add default option
-vramSel.innerHTML = '<option value="">Sort by median Dedicated VRAM</option>';
+vramSel.innerHTML = '<option value="">Sort by average Dedicated VRAM</option>';
 // Add options with color coding based on VRAM thresholds
 vramListDedicated.forEach(p => {
   const o3 = document.createElement('option');
   o3.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o3.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianDedicatedVRAM + 'MB)';
+    o3.text = '**' + p.Name.toUpperCase() + '** (Avg: ' + p.AvgDedicatedVRAM + 'MB, Max: ' + p.MaxDedicatedVRAM + 'MB)';
   } else {
-    o3.text = p.Name + ' (' + p.MedianDedicatedVRAM + 'MB)';
+    o3.text = p.Name + ' (Avg: ' + p.AvgDedicatedVRAM + 'MB, Max: ' + p.MaxDedicatedVRAM + 'MB)';
   }
   // Color coding: <100MB = green, 100-300MB = yellow, >300MB = red
   if (p.AvgDedicatedVRAM > 300) o3.style.color = 'rgb(190, 0, 0)';
@@ -800,15 +785,15 @@ vramListDedicated.forEach(p => {
 const vramListShared = $vramSharedJson;
 const vramSharedSel = document.getElementById('processSelectVramShared');
 // Reset and add default option
-vramSharedSel.innerHTML = '<option value="">Sort by median Shared VRAM</option>';
+vramSharedSel.innerHTML = '<option value="">Sort by average Shared VRAM</option>';
 // Add options with color coding based on VRAM thresholds
 vramListShared.forEach(p => {
   const o4 = document.createElement('option');
   o4.value = p.Name;
   if (p.IsAggregated === true) { // Explicit boolean check
-    o4.text = '**' + p.Name.toUpperCase() + '** (' + p.MedianSharedVRAM + 'MB)';
+    o4.text = '**' + p.Name.toUpperCase() + '** (Avg: ' + p.AvgSharedVRAM + 'MB, Max: ' + p.MaxSharedVRAM + 'MB)';
   } else {
-    o4.text = p.Name + ' (' + p.MedianSharedVRAM + 'MB)';
+    o4.text = p.Name + ' (Avg: ' + p.AvgSharedVRAM + 'MB, Max: ' + p.MaxSharedVRAM + 'MB)';
   }
   // Color coding: <100MB = green, 100-300MB = yellow, >300MB = red
   if (p.AvgSharedVRAM > 300) o4.style.color = 'rgb(190, 0, 0)';

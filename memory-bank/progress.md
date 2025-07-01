@@ -579,3 +579,25 @@ Status: ✅ COMPLETED
 - Clear presentation of storage utilization for performance analysis
 - Future-extensible framework for additional storage metrics if needed
 - Maintains compatibility with existing CSV structure and reporting tools
+[2025-07-01 14:44:30] - Process Usage Report Dropdown Enhancement - Median to Average/Max Implementation
+## Completed Tasks
+
+* **Dropdown Display Fix**: Replaced misleading median values with average and maximum values in all dropdown menus
+* **Enhanced CPU Visibility**: Fixed issue where high CPU activity processes showed 0% median in dropdown while showing activity in charts
+* **Data Structure Update**: Modified statistics objects to calculate and store maximum values alongside existing average calculations
+* **Sorting Logic Enhancement**: Updated sorting to use average values instead of median for more representative process ranking
+* **User Interface Improvement**: Enhanced dropdown display format to show both sustained load (average) and peak usage (maximum)
+
+## Key Features Implemented
+- CPU dropdown: Process names with "Avg: X%, Max: Y%" format instead of misleading median values
+- RAM dropdown: Enhanced with average and maximum memory usage display
+- VRAM dropdowns: Both dedicated and shared VRAM show average and maximum usage
+- Improved process identification for resource-intensive applications like "Parity" process
+- Consistent sorting based on average usage for better process prioritization
+
+## Implementation Benefits
+- Eliminated confusion from misleading 0% median values for high CPU processes
+- Enhanced visibility of processes with sporadic but significant resource usage
+- Better alignment between dropdown statistics and chart visualizations
+- More informative process selection with both sustained and peak usage metrics
+- Improved debugging capability for performance analysis and system monitoring
