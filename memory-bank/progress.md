@@ -601,3 +601,18 @@ Status: ✅ COMPLETED
 - Better alignment between dropdown statistics and chart visualizations
 - More informative process selection with both sustained and peak usage metrics
 - Improved debugging capability for performance analysis and system monitoring
+[2025-01-07 09:00:00] - CPU Usage Correction Factor Enhancement from 1.5x to 3.0x
+## Completed Tasks
+
+* **Enhanced CPU Accuracy**: Updated CPU usage correction factor in Reporter_for_Process.ps1 from 1.5x to 3.0x multiplier
+* **Improved Task Manager Alignment**: CPU usage values now more closely match Windows Task Manager Process tab readings
+* **Dual Format Support**: Applied 3.0x correction to both legacy CSV format and new raw data format processing
+* **Console Message Updates**: Updated processing messages to reflect new 3.0x correction factor
+* **Memory Bank Documentation**: Updated decisionLog.md with implementation details and rationale
+
+## Implementation Benefits
+- Enhanced accuracy in CPU usage reporting to better match user expectations
+- Improved diagnostic value for process performance analysis  
+- Maintained backward compatibility with existing CSV files
+- Consistent user experience with familiar Task Manager reference values
+- Automatic inheritance of corrections in aggregated process calculations

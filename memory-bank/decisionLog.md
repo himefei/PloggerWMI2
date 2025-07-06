@@ -886,3 +886,50 @@ User requested storage usage logging feature with the following specific require
 - **User Experience**: Clear storage utilization visibility for performance analysis and capacity planning
 - **Future Extensible**: Framework ready for additional storage metrics if needed (SMART data, temperature, etc.)
 - **Consistent Design**: Follows established patterns for statistics sections and data presentation
+[2025-01-07 09:00:00] - CPU Usage Correction Factor Update from 1.5x to 3.0x
+
+## Decision
+
+Updated CPU usage correction factor in Reporter_for_Process.ps1 from 1.5x to 3.0x multiplier to better align process CPU usage values with Windows Task Manager Process tab readings.
+
+## Rationale
+
+User observation indicated that the previous 1.5x correction factor was showing approximately 50% of expected Task Manager Process tab values. To achieve 2x the current corrected values (which would make them closely align with Process tab), the multiplier needed to be increased from 1.5x to 3.0x (effectively doubling the correction effect from the previous 1.5x baseline).
+
+## Implementation Details
+
+**Technical Changes:**
+- Updated legacy format processing: `$correctedCPU = $currentCPU * 3.0` (was 1.5)
+- Updated new format processing: `$correctedCPU = ($rawCPU / $coreCount) * 3.0` (was 1.5)
+- Updated console messages to indicate 3.0x correction factor application
+- Applied to both scenarios in new format: with and without logical core count
+
+**Processing Flow:**
+```powershell
+# New format: Apply 3.0x correction after core count division
+$correctedCPU = ($rawCPU / $coreCount) * 3.0
+
+# Legacy format: Apply 3.0x correction to existing values
+$correctedCPU = $currentCPU * 3.0
+```
+
+**Affected Areas:**
+- Individual process CPU calculations for charts and statistics
+- Aggregated process CPU calculations (automatically inherit corrected values)
+- CPU-based sorting and color coding in dropdown menus
+- All CPU trend line calculations (use corrected base data)
+
+## Impact
+
+- **Enhanced Accuracy**: CPU usage values now more closely match Windows Task Manager Process tab expectations
+- **Improved User Experience**: Reduces discrepancy between process monitoring tool and familiar Task Manager interface
+- **Better Diagnostic Value**: More accurate CPU usage data for performance analysis and troubleshooting
+- **Retroactive Compatibility**: Works with both existing CSV files and newly generated process data
+- **Maintained Aggregation Logic**: Aggregated processes automatically reflect corrected individual values
+
+## Benefits
+
+- **User Familiarity**: CPU percentages align more closely with Task Manager Process tab values
+- **Diagnostic Precision**: Enhanced accuracy for process performance analysis
+- **Consistent Reference**: Provides CPU usage values that match user expectations from standard Windows tools
+- **Backward Compatible**: Handles both old and new CSV formats with appropriate 3.0x correction
