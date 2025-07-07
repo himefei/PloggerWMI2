@@ -130,12 +130,12 @@ $hasNewFormat = $reqNew | ForEach-Object { $data[0].PSObject.Properties.Name.Con
 
 if ($hasOldFormat -eq 0) {
     Write-Host "Processing legacy process data format..."
-    Write-Host "Applying CPU correction factor (3.0x) to legacy data..."
-    # Apply 3.0x correction factor to legacy CPU data to match Task Manager values
+    Write-Host "Applying CPU correction factor (2.5x) to legacy data..."
+    # Apply 2.5x correction factor to legacy CPU data to match Task Manager values
     $data = $data | ForEach-Object {
         try {
             $currentCPU = [double]$_.CPUPercent
-            $correctedCPU = $currentCPU * 3.0
+            $correctedCPU = $currentCPU * 2.5
             $_.CPUPercent = [math]::Round($correctedCPU, 2)
         } catch {
             $_.CPUPercent = 0
@@ -147,20 +147,20 @@ if ($hasOldFormat -eq 0) {
     Write-Host "Processing optimized process data format..."
     $useNewFormat = $true
     
-    # Convert raw CPU data to calculated percentages and apply 3.0x correction factor
-    Write-Host "Converting raw CPU data to percentages and applying CPU correction factor (3.0x)..."
+    # Convert raw CPU data to calculated percentages and apply 2.5x correction factor
+    Write-Host "Converting raw CPU data to percentages and applying CPU correction factor (2.5x)..."
     $data = $data | ForEach-Object {
         if ($_.CPUPercentRaw -and $_.LogicalCoreCount) {
             try {
                 $rawCPU = [double]$_.CPUPercentRaw
                 $coreCount = [double]$_.LogicalCoreCount
                 if ($coreCount -gt 0) {
-                    # Apply 3.0x correction factor to match Task Manager values
-                    $correctedCPU = ($rawCPU / $coreCount) * 3.0
+                    # Apply 2.5x correction factor to match Task Manager values
+                    $correctedCPU = ($rawCPU / $coreCount) * 2.5
                     $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($correctedCPU, 2)) -Force
                 } else {
-                    # Apply 3.0x correction factor to match Task Manager values
-                    $correctedCPU = $rawCPU * 3.0
+                    # Apply 2.5x correction factor to match Task Manager values
+                    $correctedCPU = $rawCPU * 2.5
                     $_ | Add-Member -MemberType NoteProperty -Name 'CPUPercent' -Value ([math]::Round($correctedCPU, 2)) -Force
                 }
             } catch {

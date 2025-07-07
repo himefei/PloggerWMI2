@@ -886,31 +886,31 @@ User requested storage usage logging feature with the following specific require
 - **User Experience**: Clear storage utilization visibility for performance analysis and capacity planning
 - **Future Extensible**: Framework ready for additional storage metrics if needed (SMART data, temperature, etc.)
 - **Consistent Design**: Follows established patterns for statistics sections and data presentation
-[2025-01-07 09:00:00] - CPU Usage Correction Factor Update from 1.5x to 3.0x
+[2025-01-07 09:00:00] - CPU Usage Correction Factor Update from 1.5x to 2.5x
 
 ## Decision
 
-Updated CPU usage correction factor in Reporter_for_Process.ps1 from 1.5x to 3.0x multiplier to better align process CPU usage values with Windows Task Manager Process tab readings.
+Updated CPU usage correction factor in Reporter_for_Process.ps1 from 1.5x to 2.5x multiplier to better align process CPU usage values with Windows Task Manager Process tab readings.
 
 ## Rationale
 
-User observation indicated that the previous 1.5x correction factor was showing approximately 50% of expected Task Manager Process tab values. To achieve 2x the current corrected values (which would make them closely align with Process tab), the multiplier needed to be increased from 1.5x to 3.0x (effectively doubling the correction effect from the previous 1.5x baseline).
+User observation and testing indicated that the previous 1.5x correction factor was insufficient to match Task Manager Process tab values. After testing various multipliers (2.0x, 3.0x), user testing determined that 2.5x provides the optimal alignment with the CPU usage percentages seen in Task Manager's Process tab, improving accuracy and user familiarity.
 
 ## Implementation Details
 
 **Technical Changes:**
-- Updated legacy format processing: `$correctedCPU = $currentCPU * 3.0` (was 1.5)
-- Updated new format processing: `$correctedCPU = ($rawCPU / $coreCount) * 3.0` (was 1.5)
-- Updated console messages to indicate 3.0x correction factor application
+- Updated legacy format processing: `$correctedCPU = $currentCPU * 2.5` (was 1.5)
+- Updated new format processing: `$correctedCPU = ($rawCPU / $coreCount) * 2.5` (was 1.5)
+- Updated console messages to indicate 2.5x correction factor application
 - Applied to both scenarios in new format: with and without logical core count
 
 **Processing Flow:**
 ```powershell
-# New format: Apply 3.0x correction after core count division
-$correctedCPU = ($rawCPU / $coreCount) * 3.0
+# New format: Apply 2.5x correction after core count division
+$correctedCPU = ($rawCPU / $coreCount) * 2.5
 
-# Legacy format: Apply 3.0x correction to existing values
-$correctedCPU = $currentCPU * 3.0
+# Legacy format: Apply 2.5x correction to existing values
+$correctedCPU = $currentCPU * 2.5
 ```
 
 **Affected Areas:**
@@ -932,4 +932,4 @@ $correctedCPU = $currentCPU * 3.0
 - **User Familiarity**: CPU percentages align more closely with Task Manager Process tab values
 - **Diagnostic Precision**: Enhanced accuracy for process performance analysis
 - **Consistent Reference**: Provides CPU usage values that match user expectations from standard Windows tools
-- **Backward Compatible**: Handles both old and new CSV formats with appropriate 3.0x correction
+- **Backward Compatible**: Handles both old and new CSV formats with appropriate 2.5x correction
