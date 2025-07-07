@@ -616,3 +616,18 @@ Status: ✅ COMPLETED
 - Maintained backward compatibility with existing CSV files
 - Consistent user experience with familiar Task Manager reference values
 - Automatic inheritance of corrections in aggregated process calculations
+
+[2025-01-07 12:48:00] - CPU Chart Y-Axis Fixed Scale Enhancement
+## Completed Tasks
+
+* **Fixed CPU Chart Scaling**: Implemented fixed 0-100% Y-axis scale for CPU usage chart in Process Usage Report
+* **Enhanced Chart Configuration**: Created dedicated cpuChartOptions with max: 100 Y-axis setting
+* **Improved User Experience**: CPU usage now displayed with consistent 0-100% context for better interpretation
+* **Maintained Chart Functionality**: Preserved all existing features including trend lines and drag & drop capabilities
+* **Memory Bank Documentation**: Updated decisionLog.md with implementation details and rationale
+
+## Implementation Benefits
+- Better contextual awareness of CPU usage relative to maximum capacity
+- Consistent visualization matching standard system monitoring practices
+- Enhanced readability and professional appearance of CPU performance charts
+- Easier comparison and interpretation of CPU utilization levels

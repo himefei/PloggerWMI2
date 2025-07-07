@@ -933,3 +933,54 @@ $correctedCPU = $currentCPU * 2.5
 - **Diagnostic Precision**: Enhanced accuracy for process performance analysis
 - **Consistent Reference**: Provides CPU usage values that match user expectations from standard Windows tools
 - **Backward Compatible**: Handles both old and new CSV formats with appropriate 2.5x correction
+[2025-01-07 12:48:00] - CPU Chart Y-Axis Fixed Scale Implementation
+
+## Decision
+
+Fixed CPU usage chart in Process Usage Report to display a consistent 0-100% Y-axis scale instead of auto-scaling based on data values.
+
+## Rationale 
+
+User identified that the CPU usage chart was auto-scaling its Y-axis based on the actual CPU usage values, making it difficult to gauge CPU usage relative to the full 0-100% range. For CPU percentage charts, a fixed 0-100% scale provides better context and easier interpretation of CPU utilization levels.
+
+## Implementation Details
+
+**Technical Changes:**
+- Created dedicated `cpuChartOptions` configuration with fixed Y-axis scale
+- Added `max: 100` to Y-axis configuration to cap the scale at 100%
+- Maintained `beginAtZero: true` to ensure scale starts at 0%
+- Updated CPU chart creation to use `cpuChartOptions` instead of generic `chartOptions`
+
+**Chart Configuration:**
+```javascript
+const cpuChartOptions = {
+  // ... other options
+  scales: {
+    y: {
+      beginAtZero: true,
+      max: 100,  // Fixed maximum at 100%
+      grid: {
+        color: 'rgba(0, 0, 0, 0.1)',
+      }
+    }
+  }
+};
+```
+
+**Affected Components:**
+- CPU Usage (%) chart in Process Usage Report
+- Other charts (RAM, I/O, VRAM) remain with auto-scaling as appropriate
+
+## Impact
+
+- **Improved Readability**: CPU usage is now always displayed in context of 0-100% range
+- **Better Comparison**: Easier to assess CPU utilization levels relative to maximum capacity
+- **Consistent Visualization**: CPU chart behavior now matches user expectations for percentage-based metrics
+- **Enhanced User Experience**: Provides familiar scaling similar to Task Manager and other system monitoring tools
+
+## Benefits
+
+- **Contextual Awareness**: Users can immediately see CPU usage relative to full capacity
+- **Easier Interpretation**: No need to mentally adjust for different Y-axis scales
+- **Professional Appearance**: Matches standard practices for CPU monitoring visualizations
+- **Maintained Functionality**: All other chart features (trend lines, drag & drop) preserved

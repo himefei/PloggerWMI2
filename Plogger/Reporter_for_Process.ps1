@@ -830,6 +830,35 @@ const chartOptions = {
   }
 };
 
+// CPU-specific chart options with fixed 0-100% Y-axis
+const cpuChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      position: 'top',
+    },
+    tooltip: {
+      mode: 'index',
+      intersect: false,
+    }
+  },
+  scales: {
+    x: {
+      grid: {
+        color: 'rgba(0, 0, 0, 0.1)',
+      }
+    },
+    y: {
+      beginAtZero: true,
+      max: 100,
+      grid: {
+        color: 'rgba(0, 0, 0, 0.1)',
+      }
+    }
+  }
+};
+
 // Function to calculate polynomial regression trend line (more scientific approach)
 function calculateTrendLine(data) {
     if (!data || data.length < 3) return [];
@@ -1125,7 +1154,7 @@ updateAllCharts = function(processName) {
       labels,
       datasets: cpuDatasets
     },
-    options: chartOptions
+    options: cpuChartOptions
   });
   storeChartConfig('cpuChart', charts.cpu);
   
