@@ -265,7 +265,9 @@ function Get-SystemInformation {
             Write-Verbose "System Model: $($systemInfo.Model)"
         }
         
-        Write-Host "System detected: $($systemInfo.Manufacturer) $($systemInfo.Model) (Version: $($systemInfo.Version))" -ForegroundColor Cyan
+        if ($script:DebugMode) {
+            Write-Host "System detected: $($systemInfo.Manufacturer) $($systemInfo.Model) (Version: $($systemInfo.Version))" -ForegroundColor Cyan
+        }
         
     } catch {
         Write-Warning "Failed to detect system information: $($_.Exception.Message)"
@@ -307,7 +309,9 @@ function Get-GPUInformation {
                 $gpuDetail.Vendor = "Intel"
                 $gpuInfo.HasIntel = $true
                 $gpuInfo.IntelGPU = $gpuDetail
-                Write-Host "Intel GPU detected: $($gpu.Name)"
+                if ($script:DebugMode) {
+                    Write-Host "Intel GPU detected: $($gpu.Name)"
+                }
             }
             elseif ($gpu.PNPDeviceID -match "VEN_10DE" -or $gpu.Name -match "NVIDIA|GeForce|Quadro|RTX|GTX") {
                 $gpuDetail.Vendor = "NVIDIA"
@@ -342,11 +346,15 @@ function Get-GPUInformation {
                 }
                 
                 $gpuInfo.NVIDIAGPU = $gpuDetail
-                Write-Host "NVIDIA GPU detected: $($gpu.Name)"
+                if ($script:DebugMode) {
+                    Write-Host "NVIDIA GPU detected: $($gpu.Name)"
+                }
             }
             elseif ($gpu.PNPDeviceID -match "VEN_1002" -or $gpu.Name -match "AMD|Radeon|ATI") {
                 $gpuDetail.Vendor = "AMD"
-                Write-Host "AMD GPU detected: $($gpu.Name) (vendor-specific monitoring not implemented yet)"
+                if ($script:DebugMode) {
+                    Write-Host "AMD GPU detected: $($gpu.Name) (vendor-specific monitoring not implemented yet)"
+                }
             }
             
             $gpuInfo.GPUDetails += $gpuDetail
@@ -608,30 +616,30 @@ function Capture-SystemDrivers {
         [Parameter(Mandatory=$true)]
         [string]$ScriptDirectory,
         [Parameter(Mandatory=$true)]
-        [string]$SerialNumber
+        [string]$SerialNumber,
+        [bool]$DebugMode = $false
     )
     
-    Write-Host "Initializing Plogger, please wait" -NoNewline -ForegroundColor Yellow
-    
-    # Progress animation with "|" characters
-    $progressChars = @("|", "/", "-", "\")
-    $progressIndex = 0
-    $animationSteps = 15  # Number of animation steps
+    Write-Host "Initializing Plogger, please wait " -NoNewline -ForegroundColor Yellow
     
     try {
-        # Capture drivers with progress animation
-        for ($i = 0; $i -lt $animationSteps; $i++) {
-            Write-Host $progressChars[$progressIndex] -NoNewline -ForegroundColor Green
-            $progressIndex = ($progressIndex + 1) % $progressChars.Length
-            Start-Sleep -Milliseconds 200
+        # Capture drivers with simple "|" animation
+        for ($i = 0; $i -lt 10; $i++) {
+            Write-Host "|" -NoNewline -ForegroundColor Green
+            Start-Sleep -Milliseconds 300
         }
         
         Write-Host ""  # New line after progress animation
-        Write-Host "Capturing system drivers and install date..." -ForegroundColor Cyan
+        
+        if ($DebugMode) {
+            Write-Host "Capturing system drivers and install date..." -ForegroundColor Cyan
+        }
         
         # Get system install date
         $systemInstallDate = Get-SystemInstallDate
-        Write-Verbose "System install date detected: $systemInstallDate"
+        if ($DebugMode) {
+            Write-Verbose "System install date detected: $systemInstallDate"
+        }
         
         # Capture all system drivers using Win32_PnPSignedDriver
         $drivers = Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction Stop |
@@ -658,21 +666,24 @@ function Capture-SystemDrivers {
             # Write the complete content to file
             $csvContent | Out-File -FilePath $driverLogFilePath -Encoding UTF8
             
-            Write-Host "Plogger initialization completed" -ForegroundColor Green
-            Write-Host "System drivers exported to: $driverLogFilePath" -ForegroundColor Green
-            Write-Host "Total drivers captured: $($drivers.Count)" -ForegroundColor Green
-            Write-Host "System install date: $systemInstallDate" -ForegroundColor Green
+            if ($DebugMode) {
+                Write-Host "System drivers exported to: $driverLogFilePath" -ForegroundColor Green
+                Write-Host "Total drivers captured: $($drivers.Count)" -ForegroundColor Green
+                Write-Host "System install date: $systemInstallDate" -ForegroundColor Green
+            }
             
             return $driverLogFilePath
         } else {
-            Write-Warning "No system drivers found or accessible."
-            Write-Host "Plogger initialization completed (no drivers captured)" -ForegroundColor Yellow
+            if ($DebugMode) {
+                Write-Warning "No system drivers found or accessible."
+            }
             return $null
         }
         
     } catch {
-        Write-Warning "Failed to capture system drivers: $($_.Exception.Message)"
-        Write-Host "Plogger initialization completed (driver capture failed)" -ForegroundColor Yellow
+        if ($DebugMode) {
+            Write-Warning "Failed to capture system drivers: $($_.Exception.Message)"
+        }
         return $null
     }
 }
@@ -680,8 +691,12 @@ function Capture-SystemDrivers {
 # Function to capture hardware resource usage
 function Capture-ResourceUsage {
     param (
-        [int]$Duration # Duration in minutes. 0 means indefinite.
+        [int]$Duration, # Duration in minutes. 0 means indefinite.
+        [bool]$DebugMode = $false # Show debug output when true
     )
+
+    # Set script-level debug mode for use in other functions
+    $script:DebugMode = $DebugMode
 
     # --- Get PC Serial Number First for Driver Capture ---
     # LEGITIMATE DIAGNOSTIC PURPOSE: Serial number used only for unique log file naming
@@ -698,34 +713,47 @@ function Capture-ResourceUsage {
     }
 
     # --- Capture System Drivers First (with initialization animation) ---
-    $driverLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber
-    Write-Host ""  # Add spacing after driver capture
+    $driverLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber -DebugMode $DebugMode
+    
+    # Show progress message after driver capture completes
+    Write-Host "Plogger logging in progress" -ForegroundColor Green
+    Write-Host ""  # Add spacing after progress message
 
     # --- Detect System Information ---
-    Write-Host "Detecting system information..." -ForegroundColor Cyan
+    if ($DebugMode) {
+        Write-Host "Detecting system information..." -ForegroundColor Cyan
+    }
     $script:systemInfo = Get-SystemInformation
     
     # --- Detect GPU Information ---
-    Write-Host "Detecting GPU configuration..." -ForegroundColor Cyan
+    if ($DebugMode) {
+        Write-Host "Detecting GPU configuration..." -ForegroundColor Cyan
+    }
     $script:gpuInfo = Get-GPUInformation
     
-    if ($script:gpuInfo.GPUDetails.Count -eq 0) {
-        Write-Host "No discrete GPUs detected. Using basic GPU monitoring only." -ForegroundColor Yellow
-    } else {
-        foreach ($gpu in $script:gpuInfo.GPUDetails) {
-            Write-Host "Found: $($gpu.Vendor) - $($gpu.Name) ($($gpu.VideoMemoryMB) MB VRAM)" -ForegroundColor Green
+    if ($DebugMode) {
+        if ($script:gpuInfo.GPUDetails.Count -eq 0) {
+            Write-Host "No discrete GPUs detected. Using basic GPU monitoring only." -ForegroundColor Yellow
+        } else {
+            foreach ($gpu in $script:gpuInfo.GPUDetails) {
+                Write-Host "Found: $($gpu.Vendor) - $($gpu.Name) ($($gpu.VideoMemoryMB) MB VRAM)" -ForegroundColor Green
+            }
         }
     }
 
     # --- Detect Storage Information ---
-    Write-Host "Detecting storage devices..." -ForegroundColor Cyan
+    if ($DebugMode) {
+        Write-Host "Detecting storage devices..." -ForegroundColor Cyan
+    }
     $script:storageInfo = Get-StorageInformation
     
-    if ($script:storageInfo.Count -eq 0) {
-        Write-Host "No internal storage devices detected." -ForegroundColor Yellow
-    } else {
-        foreach ($storage in $script:storageInfo) {
-            Write-Host "Found: $($storage.DriveLetter) - $($storage.Label) ($($storage.CapacityGB) GB, $($storage.PercentUsed)% used)" -ForegroundColor Green
+    if ($DebugMode) {
+        if ($script:storageInfo.Count -eq 0) {
+            Write-Host "No internal storage devices detected." -ForegroundColor Yellow
+        } else {
+            foreach ($storage in $script:storageInfo) {
+                Write-Host "Found: $($storage.DriveLetter) - $($storage.Label) ($($storage.CapacityGB) GB, $($storage.PercentUsed)% used)" -ForegroundColor Green
+            }
         }
     }
 
@@ -736,7 +764,9 @@ function Capture-ResourceUsage {
         $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
         $totalRamMB = [math]::Round($computerSystem.TotalPhysicalMemory / 1MB)
     } catch {
-        Write-Warning "Failed to get Total Physical Memory: $($_.Exception.Message)"
+        if ($DebugMode) {
+            Write-Warning "Failed to get Total Physical Memory: $($_.Exception.Message)"
+        }
     }
 
     # Get CPU Max Clock Speed
@@ -744,9 +774,13 @@ function Capture-ResourceUsage {
     try {
         $cpuInfo = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1
         $cpuMaxClockSpeedMHz = $cpuInfo.MaxClockSpeed
-        Write-Verbose "CPU Max Clock Speed: $cpuMaxClockSpeedMHz MHz"
+        if ($DebugMode) {
+            Write-Verbose "CPU Max Clock Speed: $cpuMaxClockSpeedMHz MHz"
+        }
     } catch {
-        Write-Warning "Failed to get CPU Max Clock Speed: $($_.Exception.Message)"
+        if ($DebugMode) {
+            Write-Warning "Failed to get CPU Max Clock Speed: $($_.Exception.Message)"
+        }
     }
 
     $startTime = Get-Date
@@ -760,7 +794,9 @@ function Capture-ResourceUsage {
     # --- ADDED: Prepare per-process log file path ---
     $processLogFileName = "${pcSerialNumber}_$(Get-Date -Format 'HHmmss_ddMMyyyy')_process.csv"
     $processLogFilePath = Join-Path $scriptDirectory $processLogFileName
-    Write-Host "Per-process log file will be saved to: $processLogFilePath"
+    if ($DebugMode) {
+        Write-Host "Per-process log file will be saved to: $processLogFilePath"
+    }
     # --- END CHANGE ---
     
     # --- NEW: Initialize write timers and process data buffer for 15-second write intervals ---
@@ -768,16 +804,20 @@ function Capture-ResourceUsage {
     $lastProcessWriteTime = $startTime
     $processDataBuffer = @()
     $writeIntervalSeconds = 10 # Write interval in seconds
-    Write-Host "Data will be written to log files every $writeIntervalSeconds seconds."
+    if ($DebugMode) {
+        Write-Host "Data will be written to log files every $writeIntervalSeconds seconds."
+    }
     # --- END NEW ---
 
-    Write-Host "Starting data logging..."
-    if ($Duration -eq 0) {
-        Write-Host "Logging indefinitely. Press Ctrl+C to stop and save."
-    } else {
-        Write-Host "Logging for $Duration minute(s)."
+    if ($DebugMode) {
+        Write-Host "Starting data logging..."
+        if ($Duration -eq 0) {
+            Write-Host "Logging indefinitely. Press Ctrl+C to stop and save."
+        } else {
+            Write-Host "Logging for $Duration minute(s)."
+        }
+        Write-Host "Log file will be saved to: $logFilePath" # Inform user
     }
-    Write-Host "Log file will be saved to: $logFilePath" # Inform user
 
     # Register action on Ctrl+C
     $action = {
@@ -1078,7 +1118,7 @@ function Capture-ResourceUsage {
                     # Store raw mWh values for calculation in Reporter.ps1
                     if ($null -ne $batteryFullChargedCapacity_mWh -and $batteryFullChargedCapacity_mWh -gt 0 -and $null -ne $batteryRemainingCapacity_mWh) {
                         # Log that we have raw mWh values available for Reporter calculation
-                        if (-not $script:batteryWarningLogged) {
+                        if (-not $script:batteryWarningLogged -and $DebugMode) {
                             Write-Host "Battery mWh values captured for percentage calculation in Reporter."
                         }
                     }
@@ -1442,19 +1482,23 @@ function Capture-ResourceUsage {
 } # End Function Capture-ResourceUsage
 
 # Prompt for logging duration
+$debugMode = $false
 while ($true) {
-    $durationOption = Read-Host "Enter logging duration (1, 10, 30 minutes, or '0' for until stopped by pressing Ctrl+C)"
-    if ($durationOption -match '^(1|10|30|0)$') {
+    $durationOption = Read-Host "Enter logging duration (10, 30 minutes, or '0' for until stopped by pressing Ctrl+C)"
+    if ($durationOption -match '^(10|30|0)$') {
+        $durationMinutes = [int]$durationOption
+        break
+    } elseif ($durationOption -eq "debug") {
+        # Hidden debug mode - acts like 0 (indefinite) but shows debug output
+        $debugMode = $true
+        $durationMinutes = 0
         break
     } else {
-        Write-Warning "Invalid input. Please enter 1, 10, 30, or 0."
+        Write-Warning "Invalid input. Please enter 10, 30, or 0."
     }
 }
 
-# Convert to integer
-$durationMinutes = [int]$durationOption
+# Call the capture function with debug mode flag
+Capture-ResourceUsage -Duration $durationMinutes -DebugMode $debugMode
 
-# Call the capture function
-Capture-ResourceUsage -Duration $durationMinutes
-
-Write-Host "Script finished."
+Write-Host "Complete" -ForegroundColor Green
