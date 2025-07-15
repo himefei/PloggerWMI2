@@ -1,6 +1,6 @@
 ###################################################################################
 # Plogger - A PowerShell script for logging system performance metrics and exporting them to CSV files.
-# Version: 2.0.0
+# Version: 2.1.0
 # Copyright (c) 2025 Lifei Yu
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
@@ -552,11 +552,154 @@ function Get-NVIDIAMetrics {
     return $nvidiaMetrics
 }
 
+# Function to get system original install date with multiple fallback methods
+function Get-SystemInstallDate {
+    $installDate = "Unknown"
+    
+    # Method 1: Try systeminfo command (most reliable)
+    try {
+        Write-Verbose "Attempting to get install date via systeminfo command..."
+        $systeminfoOutput = & systeminfo.exe 2>$null | Where-Object { $_ -match "Original Install Date" }
+        if ($systeminfoOutput -and $systeminfoOutput -match ":\s*(.+)$") {
+            $installDate = $matches[1].Trim()
+            Write-Verbose "Install date from systeminfo: $installDate"
+            return $installDate
+        }
+    } catch {
+        Write-Verbose "systeminfo command failed: $($_.Exception.Message)"
+    }
+    
+    # Method 2: Try Win32_OperatingSystem WMI class
+    try {
+        Write-Verbose "Attempting to get install date via Win32_OperatingSystem..."
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        if ($os.InstallDate) {
+            $installDate = $os.InstallDate.ToString("MM/dd/yyyy, HH:mm:ss")
+            Write-Verbose "Install date from WMI: $installDate"
+            return $installDate
+        }
+    } catch {
+        Write-Verbose "Win32_OperatingSystem query failed: $($_.Exception.Message)"
+    }
+    
+    # Method 3: Try registry query as final fallback
+    try {
+        Write-Verbose "Attempting to get install date via registry..."
+        $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+        $installDateValue = Get-ItemProperty -Path $regPath -Name "InstallDate" -ErrorAction Stop
+        if ($installDateValue.InstallDate) {
+            # Convert Unix timestamp to readable date
+            $unixTime = [DateTimeOffset]::FromUnixTimeSeconds($installDateValue.InstallDate)
+            $installDate = $unixTime.ToString("MM/dd/yyyy, HH:mm:ss")
+            Write-Verbose "Install date from registry: $installDate"
+            return $installDate
+        }
+    } catch {
+        Write-Verbose "Registry query failed: $($_.Exception.Message)"
+    }
+    
+    Write-Verbose "All install date detection methods failed, returning: $installDate"
+    return $installDate
+}
+
+# Function to capture and export system drivers with progress animation
+function Capture-SystemDrivers {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ScriptDirectory,
+        [Parameter(Mandatory=$true)]
+        [string]$SerialNumber
+    )
+    
+    Write-Host "Initializing Plogger, please wait" -NoNewline -ForegroundColor Yellow
+    
+    # Progress animation with "|" characters
+    $progressChars = @("|", "/", "-", "\")
+    $progressIndex = 0
+    $animationSteps = 15  # Number of animation steps
+    
+    try {
+        # Capture drivers with progress animation
+        for ($i = 0; $i -lt $animationSteps; $i++) {
+            Write-Host $progressChars[$progressIndex] -NoNewline -ForegroundColor Green
+            $progressIndex = ($progressIndex + 1) % $progressChars.Length
+            Start-Sleep -Milliseconds 200
+        }
+        
+        Write-Host ""  # New line after progress animation
+        Write-Host "Capturing system drivers and install date..." -ForegroundColor Cyan
+        
+        # Get system install date
+        $systemInstallDate = Get-SystemInstallDate
+        Write-Verbose "System install date detected: $systemInstallDate"
+        
+        # Capture all system drivers using Win32_PnPSignedDriver
+        $drivers = Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction Stop |
+                   Sort-Object DeviceName |
+                   Select-Object DeviceName, FriendlyName, DriverVersion, DriverProviderName
+        
+        if ($drivers -and $drivers.Count -gt 0) {
+            # Generate driver log file name following the same pattern as other logs
+            $driverLogFileName = "${SerialNumber}_$(Get-Date -Format 'HHmmss_ddMMyyyy')_drivers.csv"
+            $driverLogFilePath = Join-Path $ScriptDirectory $driverLogFileName
+            
+            # Create CSV content with system install date at the top
+            $csvContent = @()
+            $csvContent += "# System Information"
+            $csvContent += "# Original Install Date: $systemInstallDate"
+            $csvContent += "# Driver Count: $($drivers.Count)"
+            $csvContent += "# Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+            $csvContent += ""
+            
+            # Convert drivers to CSV format and append
+            $driversCSV = $drivers | ConvertTo-Csv -NoTypeInformation
+            $csvContent += $driversCSV
+            
+            # Write the complete content to file
+            $csvContent | Out-File -FilePath $driverLogFilePath -Encoding UTF8
+            
+            Write-Host "Plogger initialization completed" -ForegroundColor Green
+            Write-Host "System drivers exported to: $driverLogFilePath" -ForegroundColor Green
+            Write-Host "Total drivers captured: $($drivers.Count)" -ForegroundColor Green
+            Write-Host "System install date: $systemInstallDate" -ForegroundColor Green
+            
+            return $driverLogFilePath
+        } else {
+            Write-Warning "No system drivers found or accessible."
+            Write-Host "Plogger initialization completed (no drivers captured)" -ForegroundColor Yellow
+            return $null
+        }
+        
+    } catch {
+        Write-Warning "Failed to capture system drivers: $($_.Exception.Message)"
+        Write-Host "Plogger initialization completed (driver capture failed)" -ForegroundColor Yellow
+        return $null
+    }
+}
+
 # Function to capture hardware resource usage
 function Capture-ResourceUsage {
     param (
         [int]$Duration # Duration in minutes. 0 means indefinite.
     )
+
+    # --- Get PC Serial Number First for Driver Capture ---
+    # LEGITIMATE DIAGNOSTIC PURPOSE: Serial number used only for unique log file naming
+    # This ensures performance logs from different systems can be properly identified
+    $pcSerialNumber = "UnknownSerial"
+    try {
+        # Standard BIOS information access for system identification (diagnostic purposes only)
+        $biosInfo = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop | Select-Object -First 1
+        if ($biosInfo.SerialNumber) {
+            $pcSerialNumber = $biosInfo.SerialNumber -replace '[^a-zA-Z0-9]', '' # Remove non-alphanumeric chars
+        }
+    } catch {
+        Write-Warning "Failed to get PC Serial Number: $($_.Exception.Message)"
+    }
+
+    # --- Capture System Drivers First (with initialization animation) ---
+    $driverLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber
+    Write-Host ""  # Add spacing after driver capture
 
     # --- Detect System Information ---
     Write-Host "Detecting system information..." -ForegroundColor Cyan
@@ -586,20 +729,8 @@ function Capture-ResourceUsage {
         }
     }
 
-    # --- Get PC Serial Number and Total RAM ---
-    # LEGITIMATE DIAGNOSTIC PURPOSE: Serial number used only for unique log file naming
-    # This ensures performance logs from different systems can be properly identified
-    $pcSerialNumber = "UnknownSerial"
+    # --- Get Total RAM ---
     $totalRamMB = $null
-    try {
-        # Standard BIOS information access for system identification (diagnostic purposes only)
-        $biosInfo = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop | Select-Object -First 1
-        if ($biosInfo.SerialNumber) {
-            $pcSerialNumber = $biosInfo.SerialNumber -replace '[^a-zA-Z0-9]', '' # Remove non-alphanumeric chars
-        }
-    } catch {
-        Write-Warning "Failed to get PC Serial Number: $($_.Exception.Message)"
-    }
     try {
         # Get total physical memory in bytes and convert to MB
         $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop

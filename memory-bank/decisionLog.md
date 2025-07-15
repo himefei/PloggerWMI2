@@ -984,3 +984,55 @@ const cpuChartOptions = {
 - **Easier Interpretation**: No need to mentally adjust for different Y-axis scales
 - **Professional Appearance**: Matches standard practices for CPU monitoring visualizations
 - **Maintained Functionality**: All other chart features (trend lines, drag & drop) preserved
+
+[2025-07-15 15:10:00] - System Driver Capture and Install Date Enhancement Implementation
+
+## Decision
+
+Implemented comprehensive system driver capture functionality with animated progress indicator and system installation date detection to enhance Plogger's diagnostic capabilities.
+
+## Rationale 
+
+User requested driver capture functionality to complement existing performance monitoring with comprehensive system driver inventory. Additionally requested system installation date capture to provide valuable context for troubleshooting and system analysis. The animated progress indicator enhances user experience during initialization phase.
+
+## Implementation Details
+
+**Driver Capture Enhancement:**
+- Created Capture-SystemDrivers() function using Get-CimInstance Win32_PnPSignedDriver
+- Captures DeviceName, FriendlyName, DriverVersion, DriverProviderName for all system drivers
+- Sorts drivers by DeviceName for consistent organization
+- Exports to CSV following existing file naming pattern: {SerialNumber}_{Timestamp}_drivers.csv
+
+**Progress Animation Implementation:**
+- Added CMD-style progress bar using rotating characters: "|", "/", "-", "\"
+- 15 animation steps over 3-second duration (200ms intervals)
+- Visual feedback during driver capture initialization phase
+- User-friendly "Initializing Plogger, please wait" message with colored output
+
+**Install Date Detection System:**
+- Created Get-SystemInstallDate() function with three-tier fallback methodology
+- Method 1: systeminfo.exe command with regex parsing (most reliable)
+- Method 2: Win32_OperatingSystem WMI class InstallDate property  
+- Method 3: Registry query HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\InstallDate
+- Graceful degradation returns "Unknown" if all methods fail
+
+**CSV Enhancement:**
+- Added metadata header to driver CSV files with system context information
+- Header includes: Original Install Date, Driver Count, Generation Timestamp
+- Comment-style formatting for easy identification and parsing
+- Maintains CSV compatibility while providing valuable diagnostic context
+
+**Integration and Flow:**
+- Integrated driver capture at beginning of Capture-ResourceUsage() function
+- Moved PC Serial Number detection earlier to support driver file naming
+- Removed duplicate serial number detection code for efficiency
+- Updated version number from 2.0.0 to 2.1.0 (minor version increment for new feature)
+
+## Impact
+
+- **Enhanced Diagnostics**: Comprehensive driver inventory provides valuable troubleshooting context
+- **User Experience**: Animated progress indicator improves perceived responsiveness during initialization
+- **System Context**: Install date detection adds temporal context for system analysis
+- **File Organization**: Driver CSV export follows established project patterns and naming conventions
+- **Compatibility**: Multi-method fallback ensures maximum compatibility across Windows systems
+- **Future Extensibility**: Framework supports additional system information capture enhancements
