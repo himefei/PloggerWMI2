@@ -715,8 +715,8 @@ function Capture-ResourceUsage {
     # --- Capture System Drivers First (with initialization animation) ---
     $driverLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber -DebugMode $DebugMode
     
-    # Show progress message after driver capture completes
-    Write-Host "Plogger logging in progress" -ForegroundColor Green
+    # Show initial progress message after driver capture completes
+    Write-Host "Plogger logging in progress" -NoNewline -ForegroundColor Green
     Write-Host ""  # Add spacing after progress message
 
     # --- Detect System Information ---
@@ -804,6 +804,12 @@ function Capture-ResourceUsage {
     $lastProcessWriteTime = $startTime
     $processDataBuffer = @()
     $writeIntervalSeconds = 10 # Write interval in seconds
+    
+    # --- NEW: Initialize animation timer for progress indication ---
+    $lastAnimationTime = $startTime
+    $animationIntervalSeconds = 10 # Show animation every 10 seconds
+    # --- END NEW ---
+    
     if ($DebugMode) {
         Write-Host "Data will be written to log files every $writeIntervalSeconds seconds."
     }
@@ -821,6 +827,7 @@ function Capture-ResourceUsage {
 
     # Register action on Ctrl+C
     $action = {
+        Write-Host ""  # New line to clean up animation display
         Write-Host "`nStopping logging and saving data..." -ForegroundColor Yellow
         
         # --- MODIFIED: Save both hardware and process data on Ctrl+C ---
@@ -878,9 +885,18 @@ function Capture-ResourceUsage {
         while ($true) {
             # Check if the logging duration has been reached
             if ($null -ne $endTime -and (Get-Date) -ge $endTime) {
+                Write-Host ""  # New line to clean up animation display
                 Write-Host "Logging duration reached. Stopping..."
                 break
             }
+            
+            # --- NEW: Show animation progress every 10 seconds ---
+            $currentTime = Get-Date
+            if (($currentTime - $lastAnimationTime).TotalSeconds -ge $animationIntervalSeconds) {
+                Write-Host "|" -NoNewline -ForegroundColor Green
+                $lastAnimationTime = $currentTime
+            }
+            # --- END NEW ---
             
             # Show progress bar if a fixed duration is set
             if ($null -ne $endTime) {
