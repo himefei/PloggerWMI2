@@ -620,20 +620,21 @@ function Capture-SystemDrivers {
         [bool]$DebugMode = $false
     )
     
-    Write-Host "Initializing Plogger, please wait " -NoNewline -ForegroundColor Yellow
-    
-    try {
-        # Capture drivers with simple "|" animation
+    if ($DebugMode) {
+        Write-Host "Capturing system drivers and install date..." -ForegroundColor Cyan
+    } else {
+        Write-Host "Initializing Plogger, please wait " -NoNewline -ForegroundColor Yellow
+        
+        # Capture drivers with simple "|" animation (only in non-debug mode)
         for ($i = 0; $i -lt 10; $i++) {
             Write-Host "|" -NoNewline -ForegroundColor Green
             Start-Sleep -Milliseconds 300
         }
         
         Write-Host ""  # New line after progress animation
-        
-        if ($DebugMode) {
-            Write-Host "Capturing system drivers and install date..." -ForegroundColor Cyan
-        }
+    }
+    
+    try {
         
         # Get system install date
         $systemInstallDate = Get-SystemInstallDate
@@ -695,7 +696,7 @@ function Capture-ResourceUsage {
         [bool]$DebugMode = $false # Show debug output when true
     )
 
-    # Set script-level debug mode for use in other functions
+    # Set script-level debug mode for use in other functions and event handlers
     $script:DebugMode = $DebugMode
 
     # --- Get PC Serial Number First for Driver Capture ---
@@ -716,8 +717,13 @@ function Capture-ResourceUsage {
     $driverLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber -DebugMode $DebugMode
     
     # Show initial progress message after driver capture completes
-    Write-Host "Plogger logging in progress" -NoNewline -ForegroundColor Green
-    Write-Host ""  # Add spacing after progress message
+    if ($DebugMode) {
+        Write-Host "Plogger logging in progress" -ForegroundColor Green
+        Write-Host ""  # Add spacing after progress message
+    } else {
+        Write-Host "Plogger logging in progress" -NoNewline -ForegroundColor Green
+        Write-Host ""  # Add spacing after progress message
+    }
 
     # --- Detect System Information ---
     if ($DebugMode) {
@@ -827,7 +833,9 @@ function Capture-ResourceUsage {
 
     # Register action on Ctrl+C
     $action = {
-        Write-Host ""  # New line to clean up animation display
+        if (-not $script:DebugMode) {
+            Write-Host ""  # New line to clean up animation display
+        }
         Write-Host "`nStopping logging and saving data..." -ForegroundColor Yellow
         
         # --- MODIFIED: Save both hardware and process data on Ctrl+C ---
@@ -885,16 +893,20 @@ function Capture-ResourceUsage {
         while ($true) {
             # Check if the logging duration has been reached
             if ($null -ne $endTime -and (Get-Date) -ge $endTime) {
-                Write-Host ""  # New line to clean up animation display
+                if (-not $DebugMode) {
+                    Write-Host ""  # New line to clean up animation display
+                }
                 Write-Host "Logging duration reached. Stopping..."
                 break
             }
             
-            # --- NEW: Show animation progress every 10 seconds ---
-            $currentTime = Get-Date
-            if (($currentTime - $lastAnimationTime).TotalSeconds -ge $animationIntervalSeconds) {
-                Write-Host "|" -NoNewline -ForegroundColor Green
-                $lastAnimationTime = $currentTime
+            # --- NEW: Show animation progress every 10 seconds (only in non-debug mode) ---
+            if (-not $DebugMode) {
+                $currentTime = Get-Date
+                if (($currentTime - $lastAnimationTime).TotalSeconds -ge $animationIntervalSeconds) {
+                    Write-Host "|" -NoNewline -ForegroundColor Green
+                    $lastAnimationTime = $currentTime
+                }
             }
             # --- END NEW ---
             
