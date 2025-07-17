@@ -217,6 +217,11 @@ function Process-BatteryRawData {
         $fullCapacity = $row.BatteryFullChargedCapacity_mWh
         $remainingCapacity = $row.BatteryRemainingCapacity_mWh
         
+        # Initialize BatteryPercentage field if it doesn't exist (removed from Plogger.ps1 for optimization)
+        if (-not ($row.PSObject.Properties.Name -contains 'BatteryPercentage')) {
+            $row | Add-Member -MemberType NoteProperty -Name 'BatteryPercentage' -Value $null -Force
+        }
+        
         # Calculate percentage if both mWh values are valid
         if ($null -ne $fullCapacity -and $fullCapacity -ne "" -and $fullCapacity -ne "N/A" -and $fullCapacity -ne "Error" -and
             $null -ne $remainingCapacity -and $remainingCapacity -ne "" -and $remainingCapacity -ne "N/A" -and $remainingCapacity -ne "Error") {
@@ -226,10 +231,16 @@ function Process-BatteryRawData {
                 if ($fullCapacityNum -gt 0) {
                     $calculatedPercentage = [Math]::Round(($remainingCapacityNum / $fullCapacityNum) * 100, 2)
                     $row.BatteryPercentage = $calculatedPercentage
+                } else {
+                    $row.BatteryPercentage = "N/A"
                 }
             } catch {
                 Write-Verbose "Failed to calculate battery percentage for timestamp $($row.Timestamp): $($_.Exception.Message)"
+                $row.BatteryPercentage = "N/A"
             }
+        } else {
+            # Set to N/A if capacity data is missing or invalid
+            $row.BatteryPercentage = "N/A"
         }
     }
     

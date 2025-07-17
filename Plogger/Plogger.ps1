@@ -1039,7 +1039,7 @@ function Capture-ResourceUsage {
             $ramUsedMBVal = $null
             $diskIOVal = $null
             $networkIOVal = $null
-            $batteryVal = $null
+            # $batteryVal = $null # REMOVED: BatteryPercentage now calculated by Reporter from capacity values
             $batteryFullChargedCapacity_mWh = $null
             $batteryRemainingCapacity_mWh = $null
             $batteryDesignCapacity_mWh = $null
@@ -1138,40 +1138,9 @@ function Capture-ResourceUsage {
             
             # --- OPTIMIZED Battery monitoring - only dynamic values queried in real-time ---
             try {
-                # PRIMARY METHOD: Get battery data from ROOT\cimv2 namespace
-                $batteryVal = $null
-                $batteries = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName Win32_Battery -ErrorAction SilentlyContinue
-                
-                # Check if any batteries were found
-                if ($batteries -and $batteries.Count -gt 0) {
-                    # Get charge remaining from the first battery (dynamic - changes frequently)
-                    $batteryVal = $batteries[0].EstimatedChargeRemaining
-                    
-                    # Also capture battery status info for more detailed reporting
-                    $batteryStatus = $batteries[0].BatteryStatus
-                    $batteryStatusText = switch ($batteryStatus) {
-                        1 {"Discharging"}
-                        2 {"AC Power"}
-                        3 {"Fully Charged"}
-                        4 {"Low"}
-                        5 {"Critical"}
-                        6 {"Charging"}
-                        7 {"Charging and High"}
-                        8 {"Charging and Low"}
-                        9 {"Charging and Critical"}
-                        10 {"Undefined"}
-                        11 {"Partially Charged"}
-                        default {"Unknown"}
-                    }
-                    
-                    # Log battery status only once on startup
-                    if (-not $script:batteryWarningLogged) {
-                        Write-Host "Battery detected: $batteryVal% ($batteryStatusText)"
-                    }
-                }
-                
                 # Get ONLY the dynamic RemainingCapacity (changes frequently during charging/discharging)
                 # Static capacities (FullChargedCapacity, DesignCapacity) are now queried once at startup
+                # Battery percentage is calculated by Reporter.ps1 from capacity values
                 $batteryRemainingCapacity_mWh = $null
                 $wmiNamespace = "ROOT\WMI"
                 try {
@@ -1189,23 +1158,24 @@ function Capture-ResourceUsage {
                 $batteryFullChargedCapacity_mWh = $script:batteryFullChargedCapacity_mWh
                 $batteryDesignCapacity_mWh = $script:batteryDesignCapacity_mWh
                 
-                # If still no battery data, mark as N/A (desktop PC)
-                if ($null -eq $batteryVal) {
-                    if (-not $script:batteryWarningLogged) {
-                        Write-Verbose "No battery detected - this appears to be a desktop PC or VM"
-                    }
-                    $batteryVal = "N/A" # Use N/A to indicate desktop PC
-                }
+                # Set default values for desktop PCs or systems without batteries
                 if ($null -eq $batteryRemainingCapacity_mWh) { $batteryRemainingCapacity_mWh = "N/A" }
                 
-                $script:batteryWarningLogged = $true
+                # Log battery detection only once on startup
+                if (-not $script:batteryWarningLogged) {
+                    if ($batteryFullChargedCapacity_mWh -ne "N/A" -or $batteryDesignCapacity_mWh -ne "N/A") {
+                        Write-Host "Battery detected - percentage will be calculated from capacity values"
+                    } else {
+                        Write-Verbose "No battery detected - this appears to be a desktop PC or VM"
+                    }
+                    $script:batteryWarningLogged = $true
+                }
                 
             } catch {
                 if (-not $script:batteryWarningLogged) {
                     Write-Warning "Failed to get Battery Status: $($_.Exception.Message)"
                     $script:batteryWarningLogged = $true
                 }
-                $batteryVal = "Error"  # Indicate an error occurred
                 $batteryFullChargedCapacity_mWh = $script:batteryFullChargedCapacity_mWh # Use cached static values
                 $batteryDesignCapacity_mWh = $script:batteryDesignCapacity_mWh # Use cached static values
                 if ($null -eq $batteryRemainingCapacity_mWh) { $batteryRemainingCapacity_mWh = "Error" }
@@ -1351,7 +1321,7 @@ function Capture-ResourceUsage {
                 RAMAvailableMB                = $ramAvailableMBVal
                 DiskIOTransferSec             = $diskIOVal
                 NetworkIOBytesSec             = $networkIOVal
-                BatteryPercentage             = $batteryVal
+                # BatteryPercentage           = $batteryVal # REMOVED: Now calculated by Reporter from capacity values
                 BatteryFullChargedCapacity_mWh = $batteryFullChargedCapacity_mWh
                 BatteryRemainingCapacity_mWh  = $batteryRemainingCapacity_mWh
                 BatteryDesignCapacity_mWh     = $batteryDesignCapacity_mWh
