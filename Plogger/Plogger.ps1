@@ -763,6 +763,120 @@ function Capture-ResourceUsage {
         }
     }
 
+    # --- ONE-TIME Battery Static Capacity Detection ---
+    # These values don't change during logging session, so query once at startup
+    if ($DebugMode) {
+        Write-Host "Detecting battery static capacities (one-time)..." -ForegroundColor Cyan
+    }
+    $script:batteryFullChargedCapacity_mWh = $null
+    $script:batteryDesignCapacity_mWh = $null
+    
+    try {
+        # Get static battery data from ROOT\cimv2 namespace first
+        $batteries = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName Win32_Battery -ErrorAction SilentlyContinue
+        if ($batteries -and $batteries.Count -gt 0) {
+            # Try to get DesignCapacity from Win32_Battery
+            try {
+                $script:batteryDesignCapacity_mWh = $batteries[0].DesignCapacity
+                if ($null -ne $script:batteryDesignCapacity_mWh) {
+                    Write-Verbose "DesignCapacity from Win32_Battery: $($script:batteryDesignCapacity_mWh) mWh"
+                }
+            } catch {
+                Write-Verbose "Could not get DesignCapacity from Win32_Battery: $($_.Exception.Message)"
+            }
+        }
+        
+        # Get static capacities from ROOT\WMI namespace
+        $wmiNamespace = "ROOT\WMI"
+        try {
+            # Get FullChargedCapacity (static - doesn't change during session)
+            $fccInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryFullChargedCapacity" -ErrorAction SilentlyContinue
+            if ($fccInstance) {
+                $script:batteryFullChargedCapacity_mWh = $fccInstance.FullChargedCapacity
+                Write-Verbose "FullChargedCapacity from ROOT\WMI: $($script:batteryFullChargedCapacity_mWh) mWh"
+            }
+            
+            # Attempt to get DesignCapacity from BatteryStaticData (prioritized for ROOT\WMI)
+            $bsdInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStaticData" -ErrorAction SilentlyContinue
+            if ($bsdInstance -and $bsdInstance.DesignedCapacity) {
+                $batteryDesignCapacity_mWh_static = $bsdInstance.DesignedCapacity
+                Write-Verbose "DesignCapacity from ROOT\WMI\BatteryStaticData: $batteryDesignCapacity_mWh_static mWh"
+                # Always prefer ROOT\WMI\BatteryStaticData if available and valid
+                if ($batteryDesignCapacity_mWh_static -ne $null -and $batteryDesignCapacity_mWh_static -gt 0) {
+                    $script:batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_static
+                }
+            }
+            
+            # ADDITIONAL FALLBACK: Try BatteryCycleCount class for design capacity (common on x86/x64)
+            if ($null -eq $script:batteryDesignCapacity_mWh -or $script:batteryDesignCapacity_mWh -eq 0) {
+                try {
+                    $bccInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryCycleCount" -ErrorAction SilentlyContinue
+                    if ($bccInstance -and $bccInstance.DesignedCapacity) {
+                        $batteryDesignCapacity_mWh_cc = $bccInstance.DesignedCapacity
+                        Write-Verbose "DesignCapacity from ROOT\WMI\BatteryCycleCount: $batteryDesignCapacity_mWh_cc mWh"
+                        if ($batteryDesignCapacity_mWh_cc -ne $null -and $batteryDesignCapacity_mWh_cc -gt 0) {
+                            $script:batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_cc
+                        }
+                    }
+                } catch {
+                    Write-Verbose "BatteryCycleCount fallback failed: $($_.Exception.Message)"
+                }
+            }
+            
+            # ADDITIONAL FALLBACK: Try MSBatteryClass for design capacity (alternative on x86/x64)
+            if ($null -eq $script:batteryDesignCapacity_mWh -or $script:batteryDesignCapacity_mWh -eq 0) {
+                try {
+                    $msbInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "MSBatteryClass" -ErrorAction SilentlyContinue
+                    if ($msbInstance -and $msbInstance.DesignedCapacity) {
+                        $batteryDesignCapacity_mWh_msb = $msbInstance.DesignedCapacity
+                        Write-Verbose "DesignCapacity from ROOT\WMI\MSBatteryClass: $batteryDesignCapacity_mWh_msb mWh"
+                        if ($batteryDesignCapacity_mWh_msb -ne $null -and $batteryDesignCapacity_mWh_msb -gt 0) {
+                            $script:batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_msb
+                        }
+                    }
+                } catch {
+                    Write-Verbose "MSBatteryClass fallback failed: $($_.Exception.Message)"
+                }
+            }
+            
+            # FINAL FALLBACK: Try Win32_PortableBattery (often available on laptops)
+            if ($null -eq $script:batteryDesignCapacity_mWh -or $script:batteryDesignCapacity_mWh -eq 0) {
+                try {
+                    $pbInstance = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName "Win32_PortableBattery" -ErrorAction SilentlyContinue
+                    if ($pbInstance -and $pbInstance.DesignCapacity) {
+                        $batteryDesignCapacity_mWh_pb = $pbInstance.DesignCapacity
+                        Write-Verbose "DesignCapacity from Win32_PortableBattery: $batteryDesignCapacity_mWh_pb mWh"
+                        if ($batteryDesignCapacity_mWh_pb -ne $null -and $batteryDesignCapacity_mWh_pb -gt 0) {
+                            $script:batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_pb
+                        }
+                    }
+                } catch {
+                    Write-Verbose "Win32_PortableBattery fallback failed: $($_.Exception.Message)"
+                }
+            }
+        } catch {
+            Write-Verbose "Battery static capacity detection (ROOT\WMI) failed: $($_.Exception.Message)"
+        }
+        
+        # Set default values if no battery detected
+        if ($null -eq $script:batteryFullChargedCapacity_mWh) { $script:batteryFullChargedCapacity_mWh = "N/A" }
+        if ($null -eq $script:batteryDesignCapacity_mWh) { $script:batteryDesignCapacity_mWh = "N/A" }
+        
+        if ($DebugMode) {
+            if ($script:batteryFullChargedCapacity_mWh -ne "N/A" -or $script:batteryDesignCapacity_mWh -ne "N/A") {
+                Write-Host "Battery static capacities detected - FullCharged: $($script:batteryFullChargedCapacity_mWh) mWh, Design: $($script:batteryDesignCapacity_mWh) mWh" -ForegroundColor Green
+            } else {
+                Write-Host "No battery detected - this appears to be a desktop PC" -ForegroundColor Yellow
+            }
+        }
+        
+    } catch {
+        Write-Warning "Failed to detect battery static capacities: $($_.Exception.Message)"
+        $script:batteryFullChargedCapacity_mWh = "Error"
+        $script:batteryDesignCapacity_mWh = "Error"
+    }
+    # --- END ONE-TIME Battery Static Capacity Detection ---
+
     # --- Get Total RAM ---
     $totalRamMB = $null
     try {
@@ -1022,7 +1136,7 @@ function Capture-ResourceUsage {
             }
             # --- END Network IO Raw Capture ---
             
-            # --- Battery monitoring with multiple methods and WMI classes ---
+            # --- OPTIMIZED Battery monitoring - only dynamic values queried in real-time ---
             try {
                 # PRIMARY METHOD: Get battery data from ROOT\cimv2 namespace
                 $batteryVal = $null
@@ -1030,18 +1144,8 @@ function Capture-ResourceUsage {
                 
                 # Check if any batteries were found
                 if ($batteries -and $batteries.Count -gt 0) {
-                    # Get charge remaining from the first battery
+                    # Get charge remaining from the first battery (dynamic - changes frequently)
                     $batteryVal = $batteries[0].EstimatedChargeRemaining
-
-                    # Try to get DesignCapacity from Win32_Battery
-                    try {
-                        $batteryDesignCapacity_mWh = $batteries[0].DesignCapacity
-                        if ($null -ne $batteryDesignCapacity_mWh) {
-                            Write-Verbose "DesignCapacity from Win32_Battery: $batteryDesignCapacity_mWh mWh"
-                        }
-                    } catch {
-                        Write-Verbose "Could not get DesignCapacity from Win32_Battery: $($_.Exception.Message)"
-                    }
                     
                     # Also capture battery status info for more detailed reporting
                     $batteryStatus = $batteries[0].BatteryStatus
@@ -1066,93 +1170,24 @@ function Capture-ResourceUsage {
                     }
                 }
                 
-                # FALLBACK METHOD: If no battery data from primary method, or to get mWh values, try WMI namespace classes
-                # Standard Windows battery management namespace for legitimate power monitoring
+                # Get ONLY the dynamic RemainingCapacity (changes frequently during charging/discharging)
+                # Static capacities (FullChargedCapacity, DesignCapacity) are now queried once at startup
+                $batteryRemainingCapacity_mWh = $null
                 $wmiNamespace = "ROOT\WMI"
                 try {
-                    # Get FullChargedCapacity
-                    $fccInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryFullChargedCapacity" -ErrorAction SilentlyContinue
-                    if ($fccInstance) {
-                        $batteryFullChargedCapacity_mWh = $fccInstance.FullChargedCapacity
-                        Write-Verbose "FullChargedCapacity from ROOT\WMI: $batteryFullChargedCapacity_mWh mWh"
-                    }
-
-                    # Get RemainingCapacity
+                    # Get RemainingCapacity (ONLY dynamic value that changes during logging)
                     $bsInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStatus" -ErrorAction SilentlyContinue
                     if ($bsInstance) {
                         $batteryRemainingCapacity_mWh = $bsInstance.RemainingCapacity
                         Write-Verbose "RemainingCapacity from ROOT\WMI: $batteryRemainingCapacity_mWh mWh"
                     }
-                    
-                    # Attempt to get DesignCapacity from BatteryStaticData (prioritized for ROOT\WMI)
-                    $bsdInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryStaticData" -ErrorAction SilentlyContinue
-                    if ($bsdInstance -and $bsdInstance.DesignedCapacity) {
-                        $batteryDesignCapacity_mWh_static = $bsdInstance.DesignedCapacity
-                        Write-Verbose "DesignCapacity from ROOT\WMI\BatteryStaticData: $batteryDesignCapacity_mWh_static mWh"
-                        # Always prefer ROOT\WMI\BatteryStaticData if available and valid
-                        if ($batteryDesignCapacity_mWh_static -ne $null -and $batteryDesignCapacity_mWh_static -gt 0) {
-                            $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_static
-                        }
-                    }
-                    
-                    # ADDITIONAL FALLBACK: Try BatteryCycleCount class for design capacity (common on x86/x64)
-                    if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh -eq 0) {
-                        try {
-                            $bccInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "BatteryCycleCount" -ErrorAction SilentlyContinue
-                            if ($bccInstance -and $bccInstance.DesignedCapacity) {
-                                $batteryDesignCapacity_mWh_cc = $bccInstance.DesignedCapacity
-                                Write-Verbose "DesignCapacity from ROOT\WMI\BatteryCycleCount: $batteryDesignCapacity_mWh_cc mWh"
-                                if ($batteryDesignCapacity_mWh_cc -ne $null -and $batteryDesignCapacity_mWh_cc -gt 0) {
-                                    $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_cc
-                                }
-                            }
-                        } catch {
-                            Write-Verbose "BatteryCycleCount fallback failed: $($_.Exception.Message)"
-                        }
-                    }
-                    
-                    # ADDITIONAL FALLBACK: Try MSBatteryClass for design capacity (alternative on x86/x64)
-                    if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh -eq 0) {
-                        try {
-                            $msbInstance = Get-CimInstance -Namespace $wmiNamespace -ClassName "MSBatteryClass" -ErrorAction SilentlyContinue
-                            if ($msbInstance -and $msbInstance.DesignedCapacity) {
-                                $batteryDesignCapacity_mWh_msb = $msbInstance.DesignedCapacity
-                                Write-Verbose "DesignCapacity from ROOT\WMI\MSBatteryClass: $batteryDesignCapacity_mWh_msb mWh"
-                                if ($batteryDesignCapacity_mWh_msb -ne $null -and $batteryDesignCapacity_mWh_msb -gt 0) {
-                                    $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_msb
-                                }
-                            }
-                        } catch {
-                            Write-Verbose "MSBatteryClass fallback failed: $($_.Exception.Message)"
-                        }
-                    }
-                    
-                    # FINAL FALLBACK: Try Win32_PortableBattery (often available on laptops)
-                    if ($null -eq $batteryDesignCapacity_mWh -or $batteryDesignCapacity_mWh -eq 0) {
-                        try {
-                            $pbInstance = Get-CimInstance -Namespace "ROOT\cimv2" -ClassName "Win32_PortableBattery" -ErrorAction SilentlyContinue
-                            if ($pbInstance -and $pbInstance.DesignCapacity) {
-                                $batteryDesignCapacity_mWh_pb = $pbInstance.DesignCapacity
-                                Write-Verbose "DesignCapacity from Win32_PortableBattery: $batteryDesignCapacity_mWh_pb mWh"
-                                if ($batteryDesignCapacity_mWh_pb -ne $null -and $batteryDesignCapacity_mWh_pb -gt 0) {
-                                    $batteryDesignCapacity_mWh = $batteryDesignCapacity_mWh_pb
-                                }
-                            }
-                        } catch {
-                            Write-Verbose "Win32_PortableBattery fallback failed: $($_.Exception.Message)"
-                        }
-                    }
-
-                    # Store raw mWh values for calculation in Reporter.ps1
-                    if ($null -ne $batteryFullChargedCapacity_mWh -and $batteryFullChargedCapacity_mWh -gt 0 -and $null -ne $batteryRemainingCapacity_mWh) {
-                        # Log that we have raw mWh values available for Reporter calculation
-                        if (-not $script:batteryWarningLogged -and $DebugMode) {
-                            Write-Host "Battery mWh values captured for percentage calculation in Reporter."
-                        }
-                    }
                 } catch {
-                    Write-Verbose "Fallback battery mWh detection (ROOT\WMI) failed: $($_.Exception.Message)"
+                    Write-Verbose "Failed to get dynamic battery remaining capacity: $($_.Exception.Message)"
                 }
+                
+                # Use pre-queried static values from script variables (set once at startup)
+                $batteryFullChargedCapacity_mWh = $script:batteryFullChargedCapacity_mWh
+                $batteryDesignCapacity_mWh = $script:batteryDesignCapacity_mWh
                 
                 # If still no battery data, mark as N/A (desktop PC)
                 if ($null -eq $batteryVal) {
@@ -1161,9 +1196,7 @@ function Capture-ResourceUsage {
                     }
                     $batteryVal = "N/A" # Use N/A to indicate desktop PC
                 }
-                if ($null -eq $batteryFullChargedCapacity_mWh) { $batteryFullChargedCapacity_mWh = "N/A" }
                 if ($null -eq $batteryRemainingCapacity_mWh) { $batteryRemainingCapacity_mWh = "N/A" }
-                if ($null -eq $batteryDesignCapacity_mWh) { $batteryDesignCapacity_mWh = "N/A" }
                 
                 $script:batteryWarningLogged = $true
                 
@@ -1173,9 +1206,9 @@ function Capture-ResourceUsage {
                     $script:batteryWarningLogged = $true
                 }
                 $batteryVal = "Error"  # Indicate an error occurred
-                if ($null -eq $batteryFullChargedCapacity_mWh) { $batteryFullChargedCapacity_mWh = "Error" }
+                $batteryFullChargedCapacity_mWh = $script:batteryFullChargedCapacity_mWh # Use cached static values
+                $batteryDesignCapacity_mWh = $script:batteryDesignCapacity_mWh # Use cached static values
                 if ($null -eq $batteryRemainingCapacity_mWh) { $batteryRemainingCapacity_mWh = "Error" }
-                if ($null -eq $batteryDesignCapacity_mWh) { $batteryDesignCapacity_mWh = "Error" }
             }
             # --- END Battery monitoring ---
             
