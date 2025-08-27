@@ -1323,6 +1323,13 @@ $reportContent = @"
         .summary-stats td:nth-child(n+2) { text-align: right; }
         .stats-section h2 { text-align: center; color: #2c3e50; margin-top: 0; margin-bottom: 25px; }
         .drag-instructions { background-color: #e3f2fd; border: 1px solid #1976d2; padding: 15px; margin: 20px auto; border-radius: 8px; text-align: center; width: 90%; color: #1976d2; font-weight: 500; }
+        .ai-insights-section { text-align: center; margin: 20px auto; width: 90%; }
+        .ai-insights-btn { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; transition: background-color 0.3s; }
+        .ai-insights-btn:hover { background-color: #0056b3; }
+        .ai-insights-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .ai-insights-response { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin-top: 20px; text-align: left; min-height: 50px; }
+        .ai-insights-response.loading { text-align: center; color: #6c757d; }
+        .ai-insights-response.error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
     </style>
 </head>
 <body>
@@ -1338,6 +1345,11 @@ $reportContent = @"
 
     <div class="drag-instructions">
         &#128202; <strong>Drag & Drop Charts:</strong> Click and drag any chart to rearrange them for easy comparison. Charts will automatically reposition as you move them around.
+    </div>
+
+    <div class="ai-insights-section">
+        <button id="aiInsightsBtn" class="ai-insights-btn">AI Insights</button>
+        <div id="aiInsightsResponse" class="ai-insights-response"></div>
     </div>
 
     <div id="chartsGrid">
@@ -1498,8 +1510,7 @@ $reportContent = @"
             return isNaN(parsed) ? null : parsed;
         }
 
-        const rawDataJson = "$jsonDataForJs";
-        const rawData = JSON.parse(rawDataJson);
+        const rawData = $jsonData;
 
         if (rawData.length > 0) {
             const firstRow = rawData[0];
@@ -2121,6 +2132,56 @@ $reportContent = @"
         // Initialize drag and drop
         document.querySelectorAll('.chart-container').forEach(container => {
             attachDragListeners(container);
+        });
+        
+        // AI Insights functionality
+        document.getElementById('aiInsightsBtn').addEventListener('click', async function() {
+            const button = this;
+            const responseDiv = document.getElementById('aiInsightsResponse');
+            
+            // Disable button and show loading state
+            button.disabled = true;
+            button.textContent = 'Generating Insights...';
+            responseDiv.className = 'ai-insights-response loading';
+            responseDiv.textContent = 'Generating AI insights... Please wait.';
+            
+            try {
+                // Send request to LM Studio API
+                const response = await fetch('http://localhost:1234/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "granite-3.0-2b-instruct", // Default model, can be changed
+                        messages: [
+                            { role: "system", content: "You are a helpful assistant analyzing system performance data." },
+                            { role: "user", content: "Tell me a short story in 50 words, must be fun" }
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 150
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('API request failed with status ' + response.status);
+                }
+                
+                const data = await response.json();
+                const aiResponse = data.choices[0].message.content;
+                
+                // Display the response
+                responseDiv.className = 'ai-insights-response';
+                responseDiv.innerHTML = '<h3>AI Insights</h3><p>' + aiResponse + '</p>';
+            } catch (error) {
+                // Display error message
+                responseDiv.className = 'ai-insights-response error';
+                responseDiv.innerHTML = '<h3>Error</h3><p>Failed to generate AI insights: ' + error.message + '</p><p>Please ensure LM Studio is running and the API is accessible.</p>';
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = 'AI Insights';
+            }
         });
     </script>
 </body>
