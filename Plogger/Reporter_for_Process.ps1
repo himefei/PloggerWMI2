@@ -967,6 +967,14 @@ function evaluatePolynomial(coefficients, x) {
 
 // Function to create dataset with consistent styling
 function createDataset(label, data, color) {
+  // Count non-null data points to determine visibility strategy
+  const nonNullPoints = data.filter(point => point !== null && point !== undefined && !isNaN(point)).length;
+  
+  // For sparse data (<=5 points), make points always visible
+  // For dense data (>5 points), show smaller points to avoid cluttering
+  const pointRadius = nonNullPoints <= 5 ? 4 : 2;
+  const pointHoverRadius = nonNullPoints <= 5 ? 6 : 5;
+  
   return {
     label: label,
     data: data,
@@ -974,9 +982,12 @@ function createDataset(label, data, color) {
     backgroundColor: color.replace(')', ', 0.2)').replace('rgb', 'rgba'),
     borderWidth: 2,
     tension: 0.4,
-    pointRadius: 0,
-    pointHoverRadius: 5,
-    pointHitRadius: 10
+    pointRadius: pointRadius,
+    pointHoverRadius: pointHoverRadius,
+    pointHitRadius: 10,
+    pointBackgroundColor: color,
+    pointBorderColor: color,
+    pointBorderWidth: 1
   };
 }
 
