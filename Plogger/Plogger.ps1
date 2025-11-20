@@ -610,7 +610,7 @@ function Get-SystemInstallDate {
     return $installDate
 }
 
-# Function to capture and export system drivers with progress animation
+# Function to capture and export system drivers, installed apps, and Windows updates with progress animation
 function Capture-SystemDrivers {
     param (
         [Parameter(Mandatory=$true)]
@@ -621,7 +621,7 @@ function Capture-SystemDrivers {
     )
     
     if ($DebugMode) {
-        Write-Host "Capturing system drivers and install date..." -ForegroundColor Cyan
+        Write-Host "Capturing system drivers, installed applications, and Windows updates..." -ForegroundColor Cyan
     } else {
         Write-Host "Initializing Plogger, please wait " -NoNewline -ForegroundColor Yellow
         
@@ -643,37 +643,174 @@ function Capture-SystemDrivers {
         }
         
         # Capture all system drivers using Win32_PnPSignedDriver
+        if ($DebugMode) {
+            Write-Host "Collecting drivers..." -ForegroundColor Cyan
+        }
         $drivers = Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction Stop |
                    Sort-Object DeviceName |
                    Select-Object DeviceName, FriendlyName, DriverVersion, DriverProviderName
         
-        if ($drivers -and $drivers.Count -gt 0) {
-            # Generate driver log file name following the same pattern as other logs
-            $driverLogFileName = "${SerialNumber}_$(Get-Date -Format 'HHmmss_ddMMyyyy')_drivers.csv"
-            $driverLogFilePath = Join-Path $ScriptDirectory $driverLogFileName
+        # Capture installed applications from registry
+        if ($DebugMode) {
+            Write-Host "Collecting installed applications..." -ForegroundColor Cyan
+        }
+        $installedApps = @()
+        $registryPaths = @(
+            "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        
+        foreach ($path in $registryPaths) {
+            try {
+                $apps = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
+                        Where-Object { $_.DisplayName -and $_.DisplayName -notmatch "^(KB\d+|Update for)" } |
+                        Select-Object @{Name="ApplicationName";Expression={$_.DisplayName}},
+                                     @{Name="Version";Expression={$_.DisplayVersion}},
+                                     @{Name="Publisher";Expression={$_.Publisher}},
+                                     @{Name="InstallDate";Expression={
+                                         if ($_.InstallDate -and $_.InstallDate -match '^\d{8}$') {
+                                             [datetime]::ParseExact($_.InstallDate, 'yyyyMMdd', $null).ToString('yyyy-MM-dd')
+                                         } else {
+                                             $_.InstallDate
+                                         }
+                                     }}
+                if ($apps) {
+                    $installedApps += $apps
+                }
+            } catch {
+                Write-Verbose "Could not access registry path: $path"
+            }
+        }
+        
+        # Remove duplicates based on ApplicationName and Version
+        $installedApps = $installedApps | Sort-Object ApplicationName -Unique
+        
+        # Capture Windows Updates
+        if ($DebugMode) {
+            Write-Host "Collecting Windows updates..." -ForegroundColor Cyan
+        }
+        $windowsUpdates = @()
+        try {
+            # Using Microsoft.Update.Session COM object for comprehensive update history
+            $updateSession = New-Object -ComObject Microsoft.Update.Session
+            $updateSearcher = $updateSession.CreateUpdateSearcher()
+            $historyCount = $updateSearcher.GetTotalHistoryCount()
             
-            # Create CSV content with system install date at the top
+            if ($historyCount -gt 0) {
+                # Get the last 1000 updates (or all if less than 1000)
+                $updateHistory = $updateSearcher.QueryHistory(0, [Math]::Min($historyCount, 1000))
+                
+                $windowsUpdates = $updateHistory | Where-Object { $_.Title } | ForEach-Object {
+                    [PSCustomObject]@{
+                        Title = $_.Title
+                        Description = $_.Description
+                        Date = if ($_.Date) { $_.Date.ToString('yyyy-MM-dd HH:mm:ss') } else { 'N/A' }
+                        Operation = switch ($_.Operation) {
+                            1 { 'Installation' }
+                            2 { 'Uninstallation' }
+                            3 { 'Other' }
+                            default { 'Unknown' }
+                        }
+                        ResultCode = switch ($_.ResultCode) {
+                            0 { 'Not Started' }
+                            1 { 'In Progress' }
+                            2 { 'Succeeded' }
+                            3 { 'Succeeded With Errors' }
+                            4 { 'Failed' }
+                            5 { 'Aborted' }
+                            default { 'Unknown' }
+                        }
+                    }
+                } | Sort-Object Date -Descending
+            }
+        } catch {
+            Write-Verbose "Failed to retrieve Windows Update history via COM: $($_.Exception.Message)"
+            # Fallback to WMI method
+            try {
+                $windowsUpdates = Get-HotFix -ErrorAction Stop | ForEach-Object {
+                    [PSCustomObject]@{
+                        Title = "$($_.Description) - $($_.HotFixID)"
+                        Description = $_.Description
+                        Date = if ($_.InstalledOn) { $_.InstalledOn.ToString('yyyy-MM-dd HH:mm:ss') } else { 'N/A' }
+                        Operation = 'Installation'
+                        ResultCode = 'Succeeded'
+                    }
+                } | Sort-Object Date -Descending
+            } catch {
+                Write-Verbose "Failed to retrieve Windows Update history via WMI: $($_.Exception.Message)"
+            }
+        }
+        
+        if ($drivers -and $drivers.Count -gt 0) {
+            # Generate comprehensive system log file name
+            $systemLogFileName = "${SerialNumber}_$(Get-Date -Format 'HHmmss_ddMMyyyy')_system_info.csv"
+            $systemLogFilePath = Join-Path $ScriptDirectory $systemLogFileName
+            
+            # Create comprehensive CSV content with all system information
             $csvContent = @()
-            $csvContent += "# System Information"
+            $csvContent += "# =========================================="
+            $csvContent += "# SYSTEM INFORMATION REPORT"
+            $csvContent += "# =========================================="
             $csvContent += "# Original Install Date: $systemInstallDate"
-            $csvContent += "# Driver Count: $($drivers.Count)"
-            $csvContent += "# Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+            $csvContent += "# Report Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+            $csvContent += "# Serial Number: $SerialNumber"
+            $csvContent += ""
+            $csvContent += "# =========================================="
+            $csvContent += "# SUMMARY"
+            $csvContent += "# =========================================="
+            $csvContent += "# Total Drivers: $($drivers.Count)"
+            $csvContent += "# Total Installed Applications: $($installedApps.Count)"
+            $csvContent += "# Total Windows Updates: $($windowsUpdates.Count)"
+            $csvContent += ""
+            $csvContent += "# =========================================="
+            $csvContent += "# SECTION 1: SYSTEM DRIVERS"
+            $csvContent += "# =========================================="
             $csvContent += ""
             
             # Convert drivers to CSV format and append
             $driversCSV = $drivers | ConvertTo-Csv -NoTypeInformation
             $csvContent += $driversCSV
             
+            # Add installed applications section
+            $csvContent += ""
+            $csvContent += "# =========================================="
+            $csvContent += "# SECTION 2: INSTALLED APPLICATIONS"
+            $csvContent += "# =========================================="
+            $csvContent += ""
+            
+            if ($installedApps.Count -gt 0) {
+                $appsCSV = $installedApps | ConvertTo-Csv -NoTypeInformation
+                $csvContent += $appsCSV
+            } else {
+                $csvContent += "# No installed applications found"
+            }
+            
+            # Add Windows updates section
+            $csvContent += ""
+            $csvContent += "# =========================================="
+            $csvContent += "# SECTION 3: WINDOWS UPDATES"
+            $csvContent += "# =========================================="
+            $csvContent += ""
+            
+            if ($windowsUpdates.Count -gt 0) {
+                $updatesCSV = $windowsUpdates | ConvertTo-Csv -NoTypeInformation
+                $csvContent += $updatesCSV
+            } else {
+                $csvContent += "# No Windows updates found"
+            }
+            
             # Write the complete content to file
-            $csvContent | Out-File -FilePath $driverLogFilePath -Encoding UTF8
+            $csvContent | Out-File -FilePath $systemLogFilePath -Encoding UTF8
             
             if ($DebugMode) {
-                Write-Host "System drivers exported to: $driverLogFilePath" -ForegroundColor Green
+                Write-Host "System information exported to: $systemLogFilePath" -ForegroundColor Green
                 Write-Host "Total drivers captured: $($drivers.Count)" -ForegroundColor Green
+                Write-Host "Total applications captured: $($installedApps.Count)" -ForegroundColor Green
+                Write-Host "Total Windows updates captured: $($windowsUpdates.Count)" -ForegroundColor Green
                 Write-Host "System install date: $systemInstallDate" -ForegroundColor Green
             }
             
-            return $driverLogFilePath
+            return $systemLogFilePath
         } else {
             if ($DebugMode) {
                 Write-Warning "No system drivers found or accessible."
@@ -683,7 +820,7 @@ function Capture-SystemDrivers {
         
     } catch {
         if ($DebugMode) {
-            Write-Warning "Failed to capture system drivers: $($_.Exception.Message)"
+            Write-Warning "Failed to capture system information: $($_.Exception.Message)"
         }
         return $null
     }
@@ -713,10 +850,10 @@ function Capture-ResourceUsage {
         Write-Warning "Failed to get PC Serial Number: $($_.Exception.Message)"
     }
 
-    # --- Capture System Drivers First (with initialization animation) ---
-    $driverLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber -DebugMode $DebugMode
+    # --- Capture System Information First (drivers, apps, updates - with initialization animation) ---
+    $systemInfoLogPath = Capture-SystemDrivers -ScriptDirectory $Global:ResolvedScriptRoot -SerialNumber $pcSerialNumber -DebugMode $DebugMode
     
-    # Show initial progress message after driver capture completes
+    # Show initial progress message after system information capture completes
     if ($DebugMode) {
         Write-Host "Plogger logging in progress" -ForegroundColor Green
         Write-Host ""  # Add spacing after progress message
